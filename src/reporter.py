@@ -41,7 +41,10 @@ def print_report(analysis_dict: dict) -> None:
     print(f"  Median price : {fmt(analysis_dict.get('median_price'))}")
     print(f"  Lowest price : {fmt(analysis_dict.get('lowest_price'))}")
     print(f"  Highest price: {fmt(analysis_dict.get('highest_price'))}")
-    print(f"  Value signal : {analysis_dict.get('value_signal', 'N/A').upper()}")
+    # Use `or 'N/A'` so that a None value_signal never reaches .upper(),
+    # which would raise an AttributeError
+    signal = analysis_dict.get("value_signal") or "N/A"
+    print(f"  Value signal : {signal.upper()}")
     print("=" * 44)
     print()
 

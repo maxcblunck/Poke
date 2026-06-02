@@ -51,7 +51,8 @@ def analyze_card(card_name: str, prices_list: list[dict]) -> dict:
             "median_price": None,
             "lowest_price": None,
             "highest_price": None,
-            "value_signal": None,
+            # Always return a string so callers can safely call .upper() etc.
+            "value_signal": "insufficient data",
         }
 
     # --- Overall summary statistics ---

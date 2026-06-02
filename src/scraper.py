@@ -2,14 +2,30 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlencode
 
-# Mimic a real Chrome browser so eBay doesn't block the request
+# Full set of headers that match what Chrome sends on a real page visit.
+# eBay's bot-detection checks for Accept, Accept-Encoding, and Connection
+# in addition to User-Agent, so omitting any of them increases the chance
+# of a 403 Forbidden response.
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/124.0.0.0 Safari/537.36"
     ),
+    "Accept": (
+        "text/html,application/xhtml+xml,application/xml;"
+        "q=0.9,image/avif,image/webp,image/apng,*/*;"
+        "q=0.8,application/signed-exchange;v=b3;q=0.7"
+    ),
     "Accept-Language": "en-US,en;q=0.9",
+    # Tell the server we can handle compressed responses (standard for browsers)
+    "Accept-Encoding": "gzip, deflate, br",
+    # Keep-alive prevents the connection from closing after each request,
+    # which is normal browser behaviour
+    "Connection": "keep-alive",
+    # Referer makes the search request look like it originated from the eBay
+    # homepage rather than appearing out of nowhere
+    "Referer": "https://www.ebay.com/",
 }
 
 MAX_RESULTS = 20
@@ -34,12 +50,25 @@ def get_ebay_sold_prices(card_name: str) -> list[dict]:
         "LH_Complete": "1",
         "LH_Sold": "1",
         "_sop": "13",     # sort by most recently ended
-        "_ipg": "60",     # request 60 results per page (we'll cap at 20)
+        "_ipg": "100",    # request 100 results per page (we'll cap at 20)
     }
     url = "https://www.ebay.com/sch/i.html?" + urlencode(params)
 
-    # Fetch the search results page
-    response = requests.get(url, headers=HEADERS, timeout=10)
+    # A Session object persists cookies across requests, just like a real
+    # browser does. eBay sets session cookies on the homepage visit and then
+    # expects to see them on subsequent requests — without them the search
+    # request looks bot-like and gets blocked with a 403.
+    session = requests.Session()
+    session.headers.update(HEADERS)
+
+    # Step 1: Visit the eBay homepage first so the session receives the
+    # standard cookies (e.g. ebay session id, gdpr consent) before we hit
+    # the search endpoint. This mirrors normal human browsing behaviour.
+    session.get("https://www.ebay.com/", timeout=10)
+
+    # Step 2: Now make the actual search request with the warmed-up session.
+    # The cookies from the homepage visit are automatically sent along.
+    response = session.get(url, timeout=10)
     response.raise_for_status()
 
     # Parse the HTML with BeautifulSoup using the fast lxml parser
@@ -68,9 +97,10 @@ def get_ebay_sold_prices(card_name: str) -> list[dict]:
         price = price_tag.get_text(strip=True) if price_tag else None
 
         # --- Date sold ---
-        # eBay shows the sold date inside a <span class="POSITIVE"> or
-        # a <span class="s-item__caption--signal POSITIVE"> element
-        date_tag = item.select_one(".s-item__caption--signal, .POSITIVE")
+        # eBay shows the sold date in a <span> that carries both classes:
+        # class="s-item__caption--signal POSITIVE". The compound selector
+        # (no comma/space) matches elements that have BOTH classes at once.
+        date_tag = item.select_one(".s-item__caption--signal.POSITIVE")
         date_sold = None
         if date_tag:
             text = date_tag.get_text(strip=True)
