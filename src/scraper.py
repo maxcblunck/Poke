@@ -1,3 +1,10 @@
+# ---------------------------------------------------------------------------
+# PLACEHOLDER — get_card_prices() below returns simulated data only.
+# It will be replaced with a real eBay API call once API access is confirmed.
+# ---------------------------------------------------------------------------
+
+import random
+import datetime
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlencode
@@ -121,6 +128,80 @@ def get_ebay_sold_prices(card_name: str) -> list[dict]:
         # Stop once we have enough results
         if len(results) >= MAX_RESULTS:
             break
+
+    return results
+
+
+def get_card_prices(card_name: str) -> list[dict]:
+    """
+    PLACEHOLDER — returns simulated sold-listing data for a Pokemon card.
+    Will be replaced with a real eBay API call.
+
+    The price range is seeded from the card name's length so the same card
+    always produces similar (though not identical) prices across calls.
+
+    Args:
+        card_name: The Pokemon card name (e.g. "Charizard Base Set").
+
+    Returns:
+        A list of 20 dicts with keys: title, price, date_sold, source,
+        sales_volume (placeholder, currently None).
+    """
+
+    # TODO — when eBay API is approved, extend this function to also return
+    # sales volume data for each listing batch. The new data should include:
+    #
+    #   - total_sold_7d:   total number of copies sold in the last 7 days
+    #   - total_sold_30d:  total number of copies sold in the last 30 days
+    #   - total_sold_90d:  total number of copies sold in the last 90 days
+    #   - velocity_trend:  percentage change comparing last 30 days to the
+    #                      previous 30 days (positive = demand rising,
+    #                      negative = demand falling)
+    #
+    # This data will be used by analyze_card() to calculate:
+    #   - demand_rating:  how actively the card is being bought and sold
+    #   - liquidity:      how quickly a seller can expect to offload a copy
+    #
+    # When implemented, replace the sales_volume placeholder below with the
+    # real dict containing the four fields above, and update analyze_card()
+    # and reporter.py to consume and display the new fields.
+
+    # Seed the random number generator with the length of the card name so
+    # that the same card name always produces a similar price distribution.
+    # Using length rather than the full string keeps prices in a believable
+    # range regardless of character encoding differences.
+    rng = random.Random(len(card_name))
+
+    # Build a realistic base price from the seed: between $5 and $500.
+    # Multiplying by the seed produces natural variation between cards of
+    # different name lengths while staying within a sensible market range.
+    base_price = rng.uniform(5.0, 500.0)
+
+    today = datetime.date.today()
+    results = []
+
+    for i in range(20):
+        # Vary each individual sale price by ±20% around the base price to
+        # simulate the spread seen across real eBay sold listings.
+        price = round(rng.uniform(base_price * 0.80, base_price * 1.20), 2)
+
+        # Pick a random sale date within the last 60 days.
+        days_ago = rng.randint(0, 60)
+        date_sold = (today - datetime.timedelta(days=days_ago)).strftime("%b %-d, %Y")
+
+        results.append({
+            "title":        f"{card_name} Pokemon Card (Simulated #{i + 1})",
+            "price":        f"${price:.2f}",
+            "date_sold":    date_sold,
+            "source":       "simulated",
+            # Placeholder — will hold sales volume data once the eBay API is
+            # integrated. Set to None now so downstream code can check for it
+            # without KeyError and start handling it before the real data arrives.
+            "sales_volume": None,
+        })
+
+    # Sort most-recent-first to match the ordering get_ebay_sold_prices() uses
+    results.sort(key=lambda r: r["date_sold"], reverse=True)
 
     return results
 
