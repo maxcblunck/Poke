@@ -491,7 +491,7 @@ for col, val, lbl in [
 st.markdown("---")
 
 # ── Session state ────────────────────────────────────────────────────────────────
-for key, default in [("search_results", []), ("selected_card", None), ("analysis_result", None), ("nm_market_price", None)]:
+for key, default in [("search_results", []), ("selected_card", None), ("analysis_result", None), ("nm_market_price", None), ("_pw_prices", {})]:
     if key not in st.session_state:
         st.session_state[key] = default
 
@@ -541,7 +541,14 @@ if st.session_state.search_results:
         details   = db.get_card_details(card["name"], card["set_name"], card.get("number"))
         with st.spinner("Crunching numbers…"):
             prices = get_card_prices(label)
-            st.session_state.nm_market_price = prices[0].get("market_price") if prices else None
+            first  = prices[0] if prices else {}
+            st.session_state.nm_market_price = first.get("market_price")
+            st.session_state._pw_prices = {
+                "market": first.get("market_price"),
+                "mid":    first.get("mid_price"),
+                "low":    first.get("low_price"),
+                "high":   first.get("high_price"),
+            } if first.get("source") == "pokewallet" else {}
             st.session_state.analysis_result = analyze_card(label, prices, details)
 
 # ── Analysis display ─────────────────────────────────────────────────────────────
@@ -561,33 +568,14 @@ if st.session_state.analysis_result:
         else:
             st.markdown("<div style='background:#1e2035;border-radius:12px;height:340px;display:flex;align-items:center;justify-content:center;font-size:3rem;'>🃏</div>", unsafe_allow_html=True)
 
-        # Price boxes: NM Market Price + PSA grades
-        p9  = r.get("psa9_price")
-        p10 = r.get("psa10_price")
-        nm  = st.session_state.get("nm_market_price")
+        # NM Market Price box
+        nm = st.session_state.get("nm_market_price")
         st.markdown("<br>", unsafe_allow_html=True)
-        g_nm, g1, g2 = st.columns(3)
-        with g_nm:
-            st.markdown(f"""
-            <div class="psa-box" style="border-color:#22c55e;">
-              <div class="psa-grade" style="color:#22c55e;">RAW NM</div>
-              <div class="psa-price">{fmt_price(nm or r.get("average_price"))}</div>
-            </div>""", unsafe_allow_html=True)
-        with g1:
-            st.markdown(f"""
-            <div class="psa-box">
-              <div class="psa-grade">PSA 9</div>
-              <div class="psa-price">{fmt_price(p9)}</div>
-            </div>""", unsafe_allow_html=True)
-        with g2:
-            st.markdown(f"""
-            <div class="psa-box">
-              <div class="psa-grade">PSA 10</div>
-              <div class="psa-price">{fmt_price(p10)}</div>
-            </div>""", unsafe_allow_html=True)
-        prem = r.get("grade_premium_pct")
-        if prem:
-            st.markdown(f"<p style='text-align:center;color:#a78bfa;font-size:0.75rem;margin-top:0.4rem;'>+{prem:,.0f}% grading premium</p>", unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class="psa-box" style="border-color:#22c55e;">
+          <div class="psa-grade" style="color:#22c55e;">NM MARKET PRICE</div>
+          <div class="psa-price">{fmt_price(nm or r.get("average_price"))}</div>
+        </div>""", unsafe_allow_html=True)
 
     with info_col:
         # Name + types
@@ -607,12 +595,18 @@ if st.session_state.analysis_result:
         # Score bar
         st.markdown(score_bar(r.get("composite_score")), unsafe_allow_html=True)
 
-        # Price metrics
+        # Price metrics — use real API values if available, else analyzer stats
+        prices_src  = st.session_state.search_results  # just to check source
+        first_price = None
+        if st.session_state.get("nm_market_price"):
+            # PokéWallet data — pull real low/mid/high from the first listing
+            all_prices  = getattr(st.session_state, "_pw_prices", None)
+        pw = st.session_state.get("_pw_prices") or {}
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Avg",    fmt_price(r.get("average_price")))
-        m2.metric("Median", fmt_price(r.get("median_price")))
-        m3.metric("Low",    fmt_price(r.get("lowest_price")))
-        m4.metric("High",   fmt_price(r.get("highest_price")))
+        m1.metric("Market",  fmt_price(pw.get("market") or r.get("average_price")))
+        m2.metric("Mid",     fmt_price(pw.get("mid")    or r.get("median_price")))
+        m3.metric("Low",     fmt_price(pw.get("low")    or r.get("lowest_price")))
+        m4.metric("High",    fmt_price(pw.get("high")   or r.get("highest_price")))
 
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -628,7 +622,6 @@ if st.session_state.analysis_result:
                 "Rarity baseline":  r.get("rarity_baseline") or "N/A",
                 "Popularity score": f"{r.get('popularity_score','N/A')} / 100",
                 "Scarcity score":   f"{r.get('scarcity_score','N/A')} / 100",
-                "Grade premium":    f"+{r.get('grade_premium_pct',0):,.0f}%" if r.get("grade_premium_pct") else "N/A",
                 "Composite score":  r.get("composite_score"),
             }
             for k, v in rows.items():
@@ -684,13 +677,12 @@ def run_scan(signal, rarities, sets, limit, highest_first):
         return
 
     rows = [{
-        "Card":       r["card_name"],
-        "Avg Price":  fmt_price(r.get("average_price")),
-        "Score":      r.get("composite_score"),
-        "Popularity": r.get("popularity_score"),
-        "Scarcity":   r.get("scarcity_score"),
-        "PSA 10":     fmt_price(r.get("psa10_price")),
-        "Signal":     r.get("recommendation"),
+        "Card":        r["card_name"],
+        "Market (NM)": fmt_price(r.get("average_price")),
+        "Score":       r.get("composite_score"),
+        "Popularity":  r.get("popularity_score"),
+        "Scarcity":    r.get("scarcity_score"),
+        "Signal":      r.get("recommendation"),
     } for r in flagged]
     st.dataframe(rows, use_container_width=True, hide_index=True)
 
@@ -700,10 +692,10 @@ def run_scan(signal, rarities, sets, limit, highest_first):
             st.markdown(f'<div class="signal-row">{signal_chips(r)}</div>', unsafe_allow_html=True)
             cols = st.columns(4)
             for col, (lbl, val) in zip(cols, [
-                ("Avg", fmt_price(r.get("average_price"))),
-                ("PSA 9",  fmt_price(r.get("psa9_price"))),
-                ("PSA 10", fmt_price(r.get("psa10_price"))),
-                ("Score",  r.get("composite_score")),
+                ("Market (NM)", fmt_price(r.get("average_price"))),
+                ("Low",         fmt_price(r.get("lowest_price"))),
+                ("High",        fmt_price(r.get("highest_price"))),
+                ("Score",       r.get("composite_score")),
             ]):
                 col.metric(lbl, val)
 

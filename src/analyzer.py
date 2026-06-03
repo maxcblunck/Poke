@@ -169,9 +169,6 @@ def _null_result(card_name: str) -> dict:
         "rarity_baseline":   None,
         "popularity_score":  None,
         "scarcity_score":    None,
-        "psa9_price":        None,
-        "psa10_price":       None,
-        "grade_premium_pct": None,
         "composite_score":   None,
         "recommendation":    "Insufficient Data",
     }
@@ -236,55 +233,35 @@ def analyze_card(
     # 7. Scarcity
     scar_score = _scarcity_score(card_details) if card_details else 10.0
 
-    # 8. Graded prices + premium
-    most_recent = parsed[0]
-    psa9_price = psa10_price = grade_premium_pct = None
-    if card_details:
-        psa9_price, psa10_price = _simulate_graded(most_recent, card_details)
-        grade_premium_pct = round((psa10_price - most_recent) / most_recent * 100, 1) if most_recent else 0.0
-
     # ------------------------------------------------------------------
     # Composite score
+    # Weights: A 20%  B 15%  C 10%  D 10%  E 25%  F 20%  = 100%
     # ------------------------------------------------------------------
+    most_recent = parsed[0]
 
     # A — price vs average (clamped deviation ±50, weight 20 %)
-    dev_pct    = (avg - most_recent) / avg * 100 if avg else 0.0
-    comp_a     = max(-50.0, min(50.0, dev_pct)) * 0.20
+    dev_pct = (avg - most_recent) / avg * 100 if avg else 0.0
+    comp_a  = max(-50.0, min(50.0, dev_pct)) * 0.20
 
     # B — trend (weight 15 %)
-    comp_b     = {"falling": 50, "stable": 0, "rising": -50}[trend] * 0.15
+    comp_b  = {"falling": 50, "stable": 0, "rising": -50}[trend] * 0.15
 
     # C — volatility (weight 10 %)
-    comp_c     = {"stable": 30, "moderate": 0, "volatile": -30}[volatility] * 0.10
+    comp_c  = {"stable": 30, "moderate": 0, "volatile": -30}[volatility] * 0.10
 
     # D — rarity baseline (weight 10 %)
-    comp_d     = {"below range": 50, "within range": 0, "above range": -50,
-                  None: 0}.get(rarity_baseline, 0) * 0.10
+    comp_d  = {"below range": 50, "within range": 0, "above range": -50,
+               None: 0}.get(rarity_baseline, 0) * 0.10
 
-    # E — popularity: map 0-100 → -25 to +25 (breakeven at score=15) weight 25 %
-    pop_raw    = max(-50.0, min(50.0, (pop_score - 15.0) * (50.0 / 85.0)))
-    comp_e     = pop_raw * 0.25
+    # E — popularity (weight 25 %)
+    pop_raw = max(-50.0, min(50.0, (pop_score - 15.0) * (50.0 / 85.0)))
+    comp_e  = pop_raw * 0.25
 
-    # F — scarcity: map 0-100 → -25 to +25 (breakeven at score=30), weight 15 %
-    scar_raw   = max(-50.0, min(50.0, (scar_score - 30.0) * (50.0 / 70.0)))
-    comp_f     = scar_raw * 0.15
+    # F — scarcity (weight 20 %, increased from 15 % now PSA signal removed)
+    scar_raw = max(-50.0, min(50.0, (scar_score - 30.0) * (50.0 / 70.0)))
+    comp_f   = scar_raw * 0.20
 
-    # G — grade premium: high PSA 10 upside = hidden value in raw card, weight 5 %
-    if psa10_price and most_recent:
-        psa10_mult = psa10_price / most_recent
-        if psa10_mult >= 8:
-            grade_raw = 50.0
-        elif psa10_mult >= 4:
-            grade_raw = 25.0
-        elif psa10_mult >= 2:
-            grade_raw = 5.0
-        else:
-            grade_raw = -10.0
-    else:
-        grade_raw = 0.0
-    comp_g     = grade_raw * 0.05
-
-    composite_score = round(comp_a + comp_b + comp_c + comp_d + comp_e + comp_f + comp_g, 1)
+    composite_score = round(comp_a + comp_b + comp_c + comp_d + comp_e + comp_f, 1)
 
     # Recommendation
     if composite_score > 60:
@@ -312,9 +289,6 @@ def analyze_card(
         "rarity_baseline":   rarity_baseline,
         "popularity_score":  round(pop_score, 1),
         "scarcity_score":    round(scar_score, 1),
-        "psa9_price":        psa9_price,
-        "psa10_price":       psa10_price,
-        "grade_premium_pct": grade_premium_pct,
         "composite_score":   composite_score,
         "recommendation":    rec,
     }

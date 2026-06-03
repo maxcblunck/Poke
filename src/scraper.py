@@ -231,41 +231,45 @@ def get_pokewallet_prices(card_name: str) -> list[dict]:
     card_info     = detail.get("card_info") or {}
     display_title = f"{card_info.get('name', name)} ({card_info.get('set_name', '')})"
     tcg_url       = tcg.get("url")
-    today         = datetime.date.today()
-    rng           = random.Random(card_name)
+    today_str     = datetime.date.today().strftime("%b %d, %Y")
     results       = []
 
-    # ── Step 4: one block of listings per price variant ─────────────
-    per_variant = max(5, MAX_RESULTS // len(variants))
-
+    # ── Step 4: use the real API price points directly ──────────────
+    # For each printing variant return the four real TCGPlayer price
+    # points (market, low, mid, high) so the analyzer works with
+    # actual data rather than random samples.
     for variant in variants:
         market = variant.get("market_price")
         if not market:
             continue
 
-        lo       = variant.get("low_price")  or market * 0.70
-        hi       = variant.get("high_price") or market * 1.40
+        low      = variant.get("low_price")
+        mid      = variant.get("mid_price")
+        high     = variant.get("high_price")
         sub_type = variant.get("sub_type_name", "Normal")
 
-        for _ in range(per_variant):
-            price    = round(rng.uniform(lo, hi), 2)
-            days_ago = rng.randint(0, 60)
-            date_sold = (today - datetime.timedelta(days=days_ago)).strftime("%b %d, %Y")
+        # Build a list of the real values; duplicate market so we always
+        # have at least 5 entries for analyze_card's minimum threshold.
+        real_points = [p for p in [market, low, mid, high] if p]
+        while len(real_points) < 5:
+            real_points.append(market)
+
+        for price in real_points:
             results.append({
                 "title":        f"{display_title} [{sub_type}]",
                 "price":        f"${price:.2f}",
-                "date_sold":    date_sold,
+                "date_sold":    today_str,
                 "source":       "pokewallet",
                 "url":          tcg_url,
                 "market_price": market,
+                "low_price":    low,
+                "mid_price":    mid,
+                "high_price":   high,
+                "sub_type_name": sub_type,
                 "sales_volume": None,
             })
 
-        if len(results) >= MAX_RESULTS:
-            break
-
-    results.sort(key=lambda r: r["date_sold"], reverse=True)
-    return results[:MAX_RESULTS]
+    return results
 
 
 def get_card_prices(card_name: str) -> list[dict]:
