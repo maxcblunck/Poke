@@ -608,7 +608,6 @@ def build_pool(rarities, sets, limit):
 
 
 def run_scan(signal, rarities, sets, limit, highest_first):
-    import pandas as pd
     pool = build_pool(rarities, sets, limit)
     if not pool:
         st.warning("No cards match the filters.")
@@ -646,7 +645,7 @@ def run_scan(signal, rarities, sets, limit, highest_first):
         "PSA 10":     fmt_price(r.get("psa10_price")),
         "Signal":     r.get("recommendation"),
     } for r in flagged]
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.dataframe(rows, use_container_width=True, hide_index=True)
 
     for r in flagged:
         with st.expander(f"{r['card_name']}  ·  {r.get('recommendation','')}"):
