@@ -11,18 +11,47 @@ POKEWALLET_BASE_URL = "https://api.pokewallet.io"
 # Module-level cache so CardDatabase is only loaded once across all calls
 _db = None
 
+
+def _load_db():
+    """Lazily load and cache the CardDatabase instance."""
+    global _db
+    if _db is None:
+        try:
+            import sys as _sys
+            _sys.path.insert(0, os.path.dirname(__file__))
+            from card_db import CardDatabase
+            _db = CardDatabase()
+        except Exception:
+            pass
+    return _db
+
+
+def _format_card_number(local_id: str) -> str | None:
+    """
+    Convert a local card id like 'base1-4' to the API query format '4/102'
+    by counting how many cards share that set prefix in the local DB.
+    Returns None if the DB isn't available or the format can't be built.
+    """
+    if not local_id or "-" not in local_id:
+        return None
+    set_code, num = local_id.rsplit("-", 1)
+    db = _load_db()
+    if not db:
+        return None
+    total = sum(1 for c in db._cards
+                if c.get("id", "").rsplit("-", 1)[0] == set_code)
+    return f"{num}/{total}" if total else None
+
+
 def _get_base_price(card_name: str) -> float:
     """
     Look up the card in CardDatabase and return a valuated simulated price.
     Falls back to a length-seeded random price if the card isn't found.
     """
-    global _db
     try:
-        if _db is None:
-            import os, sys
-            sys.path.insert(0, os.path.dirname(__file__))
-            from card_db import CardDatabase
-            _db = CardDatabase()
+        db = _load_db()
+        if not db:
+            return random.Random(card_name).uniform(5.0, 500.0)
         from card_valuator import valuate_card
     except Exception:
         return random.Random(card_name).uniform(5.0, 500.0)
@@ -32,7 +61,7 @@ def _get_base_price(card_name: str) -> float:
     name     = m.group(1).strip() if m else card_name
     set_hint = m.group(2).strip() if m else None
 
-    candidates = [c for c in _db._cards if c.get("name", "").lower() == name.lower()]
+    candidates = [c for c in db._cards if c.get("name", "").lower() == name.lower()]
     if set_hint:
         filtered = [c for c in candidates
                     if set_hint.lower() in c.get("set_name", "").lower()]
@@ -149,7 +178,7 @@ def _pokewallet_api_key() -> str:
     return os.environ.get("POKEWALLET_API_KEY", "")
 
 
-def get_pokewallet_prices(card_name: str) -> list[dict]:
+def get_pokewallet_prices(card_name: str, card_local_id: str | None = None) -> list[dict]:
     """
     Fetch real TCGPlayer market prices via the PokéWallet API.
 
@@ -175,11 +204,16 @@ def get_pokewallet_prices(card_name: str) -> list[dict]:
     set_hint = m.group(2).strip().lower() if m else None
 
     # ── Step 1: search ──────────────────────────────────────────────
+    # Including the card number (e.g. "Charizard 4/102") targets the
+    # exact printing and avoids promos/variants dominating the results.
+    number_str = _format_card_number(card_local_id) if card_local_id else None
+    search_q   = f"{name} {number_str}" if number_str else name
+
     try:
         resp = requests.get(
             f"{POKEWALLET_BASE_URL}/search",
             headers=headers,
-            params={"q": name, "limit": 20},
+            params={"q": search_q, "limit": 20},
             timeout=15,
         )
         resp.raise_for_status()
@@ -195,7 +229,6 @@ def get_pokewallet_prices(card_name: str) -> list[dict]:
     name_lower = name.lower()
 
     def _score(c: dict) -> int:
-        # Fields live under card_info in search results
         info  = c.get("card_info") or c
         cname = info.get("name", "").lower()
         cset  = info.get("set_name", "").lower()
@@ -204,6 +237,12 @@ def get_pokewallet_prices(card_name: str) -> list[dict]:
         elif cname.startswith(name_lower): s += 5
         elif name_lower in cname:          s += 2
         if set_hint and set_hint in cset:  s += 8
+        # Penalise premium/variant pressings so plain Unlimited beats
+        # Shadowless, 1st Edition, Error, Promo, Jumbo, Metal etc.
+        _PENALTY = ["shadowless", "1st edition", "error", "promo",
+                    "jumbo", "metal", "classic collection", "celebrations"]
+        if any(p in cset for p in _PENALTY):
+            s -= 6
         return s
 
     best = max(cards, key=_score)
@@ -290,7 +329,7 @@ def get_pokewallet_prices(card_name: str) -> list[dict]:
     return results
 
 
-def get_card_prices(card_name: str) -> list[dict]:
+def get_card_prices(card_name: str, card_local_id: str | None = None) -> list[dict]:
     """
     Return price data for a Pokemon card.
 
@@ -304,7 +343,7 @@ def get_card_prices(card_name: str) -> list[dict]:
     """
     # 1. PokéWallet
     try:
-        pw = get_pokewallet_prices(card_name)
+        pw = get_pokewallet_prices(card_name, card_local_id)
     except Exception:
         pw = []
 

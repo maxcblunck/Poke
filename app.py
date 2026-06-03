@@ -540,7 +540,7 @@ if st.session_state.search_results:
         label     = f"{card['name']} ({card['set_name']})"
         details   = db.get_card_details(card["name"], card["set_name"], card.get("number"))
         with st.spinner("Crunching numbers…"):
-            prices = get_card_prices(label)
+            prices = get_card_prices(label, details.get("id") if details else None)
             first  = prices[0] if prices else {}
             is_pw  = first.get("source") == "pokewallet"
             st.session_state.nm_market_price = first.get("market_price") if is_pw else None
@@ -676,7 +676,7 @@ def run_scan(signal, rarities, sets, limit, highest_first):
         label   = f"{card['name']} ({card['set_name']})"
         details = db.get_card_details(card["name"], card["set_name"], card.get("number"))
         progress.progress((i + 1) / len(pool), text=f"{label}  ({i+1}/{len(pool)})")
-        results.append(analyze_card(label, get_card_prices(label), details))
+        results.append(analyze_card(label, get_card_prices(label, details.get("id") if details else None), details))
         if i < len(pool) - 1:
             time.sleep(0.5)
     progress.empty()
