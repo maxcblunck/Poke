@@ -1,306 +1,349 @@
+import csv
+import os
 import re
 import statistics
 
-
 # ---------------------------------------------------------------------------
-# Rarity price ranges: (min_expected, max_expected) in USD.
-# Used by the rarity baseline check when card_details are provided.
+# Rarity expected price ranges (min, max) in USD
 # ---------------------------------------------------------------------------
 RARITY_RANGES = {
-    "Common":       (0.10,   2.00),
-    "Uncommon":     (0.50,   5.00),
-    "Rare":         (2.00,  20.00),
-    "Rare Holo":    (5.00, 100.00),
-    "Rare Ultra":  (20.00, 500.00),
+    "Common":        (0.10,    2.00),
+    "Uncommon":      (0.50,    5.00),
+    "Rare":          (2.00,   20.00),
+    "Rare Holo":     (5.00,  100.00),
+    "Rare Ultra":   (20.00,  500.00),
     "Rare Secret": (100.00, 1000.00),
 }
 
+# ---------------------------------------------------------------------------
+# Set era classification — strip trailing digits from set id prefix
+# e.g. "base1" → "base" → vintage
+# ---------------------------------------------------------------------------
+_VINTAGE    = {"base", "gym", "neo", "np", "basep", "bp"}
+_OLDSCHOOL  = {"ecard", "ex", "pop", "ru", "si"}
+_CLASSIC    = {"dp", "dpp", "pl", "hgss", "hsp", "col", "bw", "bwp", "dv"}
+_MODERN     = {"xy", "xyp", "dc", "det", "g", "sm", "smp", "cel", "cel25", "pgo"}
+# anything else (sv*, swsh*, me*, mcd*, fut*, rsv*) → recent
 
-def _parse_price(price_str: str) -> float | None:
-    """
-    Convert a raw price string like '$12.99' or '$10.00 to $15.00' into a
-    single float. For ranges, takes the lower bound.
-    Returns None if the string cannot be parsed.
-    """
+_ERA_SCARCITY = {
+    "vintage":   90,
+    "oldschool": 65,
+    "classic":   42,
+    "modern":    22,
+    "recent":    10,
+}
+
+_RARITY_SCARCITY_BONUS = {
+    "Common":        0,
+    "Uncommon":      3,
+    "Rare":          6,
+    "Rare Holo":    10,
+    "Rare Ultra":   14,
+    "Rare Secret":  18,
+}
+
+# ---------------------------------------------------------------------------
+# PSA grade multipliers over raw price — (psa9_mult, psa10_mult)
+# Grounded in real hobby observations: vintage holos command the biggest
+# premiums; recent commons barely justify grading costs.
+# ---------------------------------------------------------------------------
+_GRADE_MULTIPLIERS: dict[tuple, tuple[float, float]] = {
+    ("vintage",   "Rare Holo"):   (4.0, 18.0),
+    ("vintage",   "Rare"):        (3.0,  9.0),
+    ("vintage",   "Uncommon"):    (3.0, 10.0),
+    ("vintage",   "Common"):      (3.5, 13.0),
+    ("oldschool", "Rare Holo"):   (2.5,  8.0),
+    ("oldschool", "Rare Ultra"):  (2.5,  7.0),
+    ("oldschool", "Rare"):        (2.0,  5.0),
+    ("oldschool", "Common"):      (2.0,  5.0),
+    ("classic",   "Rare Holo"):   (2.0,  5.5),
+    ("classic",   "Rare Ultra"):  (2.0,  5.0),
+    ("classic",   "Rare"):        (1.6,  3.5),
+    ("classic",   "Common"):      (1.5,  3.0),
+    ("modern",    "Rare Ultra"):  (1.5,  3.5),
+    ("modern",    "Rare Secret"): (1.5,  4.0),
+    ("modern",    "Rare Holo"):   (1.4,  3.0),
+    ("modern",    "Common"):      (1.2,  2.0),
+    ("recent",    "Rare Ultra"):  (1.3,  2.8),
+    ("recent",    "Rare Secret"): (1.4,  3.2),
+    ("recent",    "Rare Holo"):   (1.25, 2.5),
+    ("recent",    "Common"):      (1.1,  1.7),
+}
+_GRADE_DEFAULT = (1.2, 2.5)
+
+# ---------------------------------------------------------------------------
+# Suffix pattern to strip card variant labels from a Pokemon name
+# so "Charizard VMAX" → "Charizard" for popularity lookup
+# ---------------------------------------------------------------------------
+_SUFFIX_RE = re.compile(
+    r"\s+(V|VMAX|VSTAR|VUNION|GX|EX|TAG|TEAM|"
+    r"Prime|LV\.X|Level-Up|LEGEND|BREAK|"
+    r"delta|Star|[♀♂])\b.*$",
+    re.IGNORECASE,
+)
+
+# Module-level cache for popularity data so the CSV is only read once
+_popularity_cache: dict[str, float] | None = None
+
+
+# ---------------------------------------------------------------------------
+# Private helpers
+# ---------------------------------------------------------------------------
+
+def _load_popularity() -> dict[str, float]:
+    global _popularity_cache
+    if _popularity_cache is not None:
+        return _popularity_cache
+
+    path = os.path.join(os.path.dirname(__file__), "..", "data", "popularity.csv")
+    scores: dict[str, float] = {}
+    if os.path.exists(path):
+        with open(path, newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                scores[row["name"].lower()] = float(row["score"])
+    _popularity_cache = scores
+    return scores
+
+
+def _base_pokemon_name(card_name: str) -> str:
+    if " & " in card_name:
+        card_name = card_name.split(" & ")[0].strip()
+    return _SUFFIX_RE.sub("", card_name).strip()
+
+
+def _popularity_score(card_name: str) -> float:
+    """Return 0-100 Google Trends score; 0 if not found in popularity.csv."""
+    scores = _load_popularity()
+    base = _base_pokemon_name(card_name).lower()
+    return scores.get(base, 0.0)
+
+
+def _card_era(card_id: str) -> str:
+    """Return era string from a card id like 'base1-4'."""
+    prefix = re.sub(r"\d+", "", card_id.split("-")[0]).lower()
+    if prefix in _VINTAGE:   return "vintage"
+    if prefix in _OLDSCHOOL: return "oldschool"
+    if prefix in _CLASSIC:   return "classic"
+    if prefix in _MODERN:    return "modern"
+    return "recent"
+
+
+def _scarcity_score(card_details: dict) -> float:
+    """Return 0-100 scarcity score from set era and rarity."""
+    era = _card_era(card_details.get("id", "recent-0"))
+    rarity = card_details.get("rarity", "Common")
+    base = _ERA_SCARCITY.get(era, 10)
+    bonus = _RARITY_SCARCITY_BONUS.get(rarity, 0)
+    return min(100.0, float(base + bonus))
+
+
+def _simulate_graded(raw_price: float, card_details: dict) -> tuple[float, float]:
+    """Return simulated (psa9_price, psa10_price) from raw price."""
+    era = _card_era(card_details.get("id", "recent-0"))
+    rarity = card_details.get("rarity", "Common")
+    psa9_mult, psa10_mult = _GRADE_MULTIPLIERS.get((era, rarity), _GRADE_DEFAULT)
+    return round(raw_price * psa9_mult, 2), round(raw_price * psa10_mult, 2)
+
+
+def _parse_price(price_str) -> float | None:
+    if isinstance(price_str, (int, float)):
+        return float(price_str)
     if not price_str:
         return None
-
-    # Remove commas so "1,200.00" parses correctly, then grab the first
-    # numeric value in the string (handles currency symbols and ranges)
-    match = re.search(r"\d+\.?\d*", price_str.replace(",", ""))
-    if not match:
-        return None
-
-    return float(match.group())
+    match = re.search(r"\d+\.?\d*", str(price_str).replace(",", ""))
+    return float(match.group()) if match else None
 
 
 def _null_result(card_name: str) -> dict:
-    """Return the standard 'insufficient data' dict when we can't analyze."""
     return {
-        "card_name":        card_name,
-        "num_sales":        0,
-        "average_price":    None,
-        "median_price":     None,
-        "lowest_price":     None,
-        "highest_price":    None,
-        "trend":            None,
-        "trend_pct_change": None,
-        "volatility":       None,
-        "volatility_std":   None,
-        "rarity_baseline":  None,
-        "composite_score":  None,
-        "recommendation":   "Insufficient Data",
+        "card_name":         card_name,
+        "num_sales":         0,
+        "average_price":     None,
+        "median_price":      None,
+        "lowest_price":      None,
+        "highest_price":     None,
+        "trend":             None,
+        "trend_pct_change":  None,
+        "volatility":        None,
+        "volatility_std":    None,
+        "rarity_baseline":   None,
+        "popularity_score":  None,
+        "scarcity_score":    None,
+        "psa9_price":        None,
+        "psa10_price":       None,
+        "grade_premium_pct": None,
+        "composite_score":   None,
+        "recommendation":    "Insufficient Data",
     }
 
 
-def analyze_card(card_name: str, prices_list: list[dict], card_details: dict | None = None) -> dict:
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def analyze_card(
+    card_name: str,
+    prices_list: list[dict],
+    card_details: dict | None = None,
+) -> dict:
     """
-    Analyze sold listing data for a Pokemon card and return a comprehensive
-    valuation dictionary.
+    Analyze sold listing data and return a valuation dictionary.
 
-    Args:
-        card_name:    Name of the card being analyzed.
-        prices_list:  List of price dicts from get_card_prices() / get_ebay_sold_prices().
-                      Each dict must have a 'price' key (string or numeric).
-                      Assumed to be sorted most-recent-first.
-        card_details: Optional full card dict from CardDatabase.get_card_details().
-                      Used for the rarity baseline check. Pass None to skip it.
-
-    Returns:
-        Dict with keys: card_name, num_sales, average_price, median_price,
-        lowest_price, highest_price, trend, trend_pct_change, volatility,
-        volatility_std, rarity_baseline, composite_score, recommendation.
+    Composite score (-100 to +100) is built from seven components:
+      A  Price vs average      20 % — recent sale vs mean; below = potential bargain
+      B  Trend                 15 % — 5 newest vs 5 oldest sales
+      C  Volatility            10 % — coefficient of variation
+      D  Rarity baseline       10 % — price vs expected range for its rarity tier
+      E  Popularity            25 % — Google Trends 12-month interest (from popularity.csv)
+      F  Scarcity              15 % — set era age + rarity tier
+      G  Grade premium          5 % — implied PSA 10 upside over raw price
     """
 
-    # -----------------------------------------------------------------------
-    # 1. Parse all price strings into floats, skipping unparseable entries
-    # -----------------------------------------------------------------------
-    parsed_prices = []
-    for listing in prices_list:
-        raw = listing.get("price", "")
-        # Accept prices already stored as numbers (e.g. from simulated data)
-        if isinstance(raw, (int, float)):
-            parsed_prices.append(float(raw))
-        else:
-            value = _parse_price(raw)
-            if value is not None:
-                parsed_prices.append(value)
-
-    # Need at least 5 prices to produce meaningful trend and volatility figures
-    if len(parsed_prices) < 5:
+    # 1. Parse prices
+    parsed = [v for v in (_parse_price(l.get("price")) for l in prices_list) if v is not None]
+    if len(parsed) < 5:
         return _null_result(card_name)
 
-    # -----------------------------------------------------------------------
-    # 2. Basic summary statistics
-    # -----------------------------------------------------------------------
-    average_price = statistics.mean(parsed_prices)
-    median_price  = statistics.median(parsed_prices)
-    lowest_price  = min(parsed_prices)
-    highest_price = max(parsed_prices)
+    # 2. Summary stats
+    avg     = statistics.mean(parsed)
+    median  = statistics.median(parsed)
+    low     = min(parsed)
+    high    = max(parsed)
+    std_dev = statistics.stdev(parsed)
 
-    # -----------------------------------------------------------------------
-    # 3. Trend — compare the 5 most recent sales to the 5 oldest sales.
-    #    The input list is most-recent-first, so:
-    #      parsed_prices[:5]  = the 5 newest sales
-    #      parsed_prices[-5:] = the 5 oldest sales
-    #    Percentage change = (recent_avg - old_avg) / old_avg * 100
-    #    >+5%  → 'rising'   (price is climbing)
-    #    <-5%  → 'falling'  (price is dropping)
-    #    else  → 'stable'
-    # -----------------------------------------------------------------------
-    recent_avg = statistics.mean(parsed_prices[:5])
-    oldest_avg = statistics.mean(parsed_prices[-5:])
+    # 3. Trend (most-recent-first assumed)
+    recent_avg = statistics.mean(parsed[:5])
+    oldest_avg = statistics.mean(parsed[-5:])
+    trend_pct  = (recent_avg - oldest_avg) / oldest_avg * 100 if oldest_avg else 0.0
+    trend      = "rising" if trend_pct > 5 else ("falling" if trend_pct < -5 else "stable")
 
-    # Guard against a zero oldest_avg to avoid division by zero
-    if oldest_avg == 0:
-        trend_pct_change = 0.0
-    else:
-        trend_pct_change = (recent_avg - oldest_avg) / oldest_avg * 100
+    # 4. Volatility
+    cv = (std_dev / avg) if avg else 0.0
+    volatility = "stable" if cv < 0.15 else ("moderate" if cv < 0.30 else "volatile")
 
-    if trend_pct_change > 5:
-        trend = "rising"
-    elif trend_pct_change < -5:
-        trend = "falling"
-    else:
-        trend = "stable"
-
-    # -----------------------------------------------------------------------
-    # 4. Volatility — standard deviation expressed as a fraction of the mean
-    #    (coefficient of variation).
-    #    < 15% of mean → 'stable'    (consistent prices)
-    #    < 30% of mean → 'moderate'  (some spread)
-    #    ≥ 30% of mean → 'volatile'  (wide price swings)
-    # -----------------------------------------------------------------------
-    std_dev = statistics.stdev(parsed_prices)  # sample std dev (n-1)
-
-    # Coefficient of variation: normalise std dev to the mean so the label
-    # is comparable across cards with very different price levels
-    if average_price == 0:
-        cv = 0.0
-    else:
-        cv = std_dev / average_price
-
-    if cv < 0.15:
-        volatility = "stable"
-    elif cv < 0.30:
-        volatility = "moderate"
-    else:
-        volatility = "volatile"
-
-    # -----------------------------------------------------------------------
-    # 5. Rarity baseline — only calculated when card_details is provided.
-    #    Compares the average price against the expected range for the card's
-    #    rarity using RARITY_RANGES defined at the top of this file.
-    #    Returns 'within range', 'below range', 'above range', or None if
-    #    rarity data is unavailable.
-    # -----------------------------------------------------------------------
+    # 5. Rarity baseline
     rarity_baseline = None
     if card_details:
         rarity = card_details.get("rarity")
-        if rarity and rarity in RARITY_RANGES:
-            low, high = RARITY_RANGES[rarity]
-            if average_price < low:
-                rarity_baseline = "below range"
-            elif average_price > high:
-                rarity_baseline = "above range"
-            else:
-                rarity_baseline = "within range"
+        if rarity in RARITY_RANGES:
+            lo, hi = RARITY_RANGES[rarity]
+            rarity_baseline = ("below range" if avg < lo else
+                               "above range" if avg > hi else "within range")
 
-    # -----------------------------------------------------------------------
-    # 6. Composite score (-100 to +100)
-    #
-    #    A higher score means the card looks more undervalued (good to buy).
-    #    A lower score means it looks more overvalued (consider selling).
-    #
-    #    Component A — price vs average (weight 40%)
-    #      Compares the most recent sale to the overall average.
-    #      Below average → positive contribution (potential bargain).
-    #      Above average → negative contribution (potentially overpriced).
-    #      Clamped to ±50 before weighting to prevent one outlier dominating.
-    #
-    #    Component B — trend direction (weight 30%)
-    #      'falling' prices → positive (buying opportunity if it rebounds).
-    #      'rising'  prices → negative (momentum may be spent).
-    #      'stable'  prices → neutral.
-    #
-    #    Component C — volatility (weight 15%)
-    #      'stable'   → positive (predictable, lower risk).
-    #      'moderate' → neutral.
-    #      'volatile' → negative (harder to time a purchase).
-    #
-    #    Component D — rarity baseline (weight 15%)
-    #      'below range' → positive (underpriced for its rarity tier).
-    #      'above range' → negative (overpriced for its rarity tier).
-    #      'within range' or None → neutral.
-    # -----------------------------------------------------------------------
+    # 6. Popularity
+    pop_score = _popularity_score(card_name)
 
-    # Component A: price vs average
-    # Use the most recent price (index 0) as the current market price.
-    # Express deviation as a percentage of the average, clamped to ±50.
-    most_recent_price = parsed_prices[0]
-    if average_price > 0:
-        price_deviation_pct = (average_price - most_recent_price) / average_price * 100
+    # 7. Scarcity
+    scar_score = _scarcity_score(card_details) if card_details else 10.0
+
+    # 8. Graded prices + premium
+    most_recent = parsed[0]
+    psa9_price = psa10_price = grade_premium_pct = None
+    if card_details:
+        psa9_price, psa10_price = _simulate_graded(most_recent, card_details)
+        grade_premium_pct = round((psa10_price - most_recent) / most_recent * 100, 1) if most_recent else 0.0
+
+    # ------------------------------------------------------------------
+    # Composite score
+    # ------------------------------------------------------------------
+
+    # A — price vs average (clamped deviation ±50, weight 20 %)
+    dev_pct    = (avg - most_recent) / avg * 100 if avg else 0.0
+    comp_a     = max(-50.0, min(50.0, dev_pct)) * 0.20
+
+    # B — trend (weight 15 %)
+    comp_b     = {"falling": 50, "stable": 0, "rising": -50}[trend] * 0.15
+
+    # C — volatility (weight 10 %)
+    comp_c     = {"stable": 30, "moderate": 0, "volatile": -30}[volatility] * 0.10
+
+    # D — rarity baseline (weight 10 %)
+    comp_d     = {"below range": 50, "within range": 0, "above range": -50,
+                  None: 0}.get(rarity_baseline, 0) * 0.10
+
+    # E — popularity: map 0-100 → -25 to +25 (breakeven at score=15) weight 25 %
+    pop_raw    = max(-50.0, min(50.0, (pop_score - 15.0) * (50.0 / 85.0)))
+    comp_e     = pop_raw * 0.25
+
+    # F — scarcity: map 0-100 → -25 to +25 (breakeven at score=30), weight 15 %
+    scar_raw   = max(-50.0, min(50.0, (scar_score - 30.0) * (50.0 / 70.0)))
+    comp_f     = scar_raw * 0.15
+
+    # G — grade premium: high PSA 10 upside = hidden value in raw card, weight 5 %
+    if psa10_price and most_recent:
+        psa10_mult = psa10_price / most_recent
+        if psa10_mult >= 8:
+            grade_raw = 50.0
+        elif psa10_mult >= 4:
+            grade_raw = 25.0
+        elif psa10_mult >= 2:
+            grade_raw = 5.0
+        else:
+            grade_raw = -10.0
     else:
-        price_deviation_pct = 0.0
-    price_vs_avg_raw = max(-50, min(50, price_deviation_pct))  # clamp to [-50, 50]
-    component_a = price_vs_avg_raw * 0.40                      # weight: 40%
+        grade_raw = 0.0
+    comp_g     = grade_raw * 0.05
 
-    # Component B: trend direction
-    trend_scores = {"falling": 50, "stable": 0, "rising": -50}
-    component_b = trend_scores[trend] * 0.30                   # weight: 30%
+    composite_score = round(comp_a + comp_b + comp_c + comp_d + comp_e + comp_f + comp_g, 1)
 
-    # Component C: volatility
-    volatility_scores = {"stable": 30, "moderate": 0, "volatile": -30}
-    component_c = volatility_scores[volatility] * 0.15         # weight: 15%
-
-    # Component D: rarity baseline
-    baseline_scores = {
-        "below range":  50,
-        "within range":  0,
-        "above range": -50,
-        None:            0,   # no rarity data → neutral
-    }
-    component_d = baseline_scores.get(rarity_baseline, 0) * 0.15  # weight: 15%
-
-    # Sum all weighted components; round to one decimal place
-    composite_score = round(component_a + component_b + component_c + component_d, 1)
-
-    # -----------------------------------------------------------------------
-    # 7. Recommendation label based on composite score thresholds
-    # -----------------------------------------------------------------------
+    # Recommendation
     if composite_score > 60:
-        recommendation = "Strong Buy"
+        rec = "Strong Buy"
     elif composite_score > 30:
-        recommendation = "Buy"
+        rec = "Buy"
     elif composite_score >= -30:
-        recommendation = "Fair Value"
+        rec = "Fair Value"
     elif composite_score >= -60:
-        recommendation = "Sell"
+        rec = "Sell"
     else:
-        recommendation = "Strong Sell"
+        rec = "Strong Sell"
 
     return {
-        "card_name":        card_name,
-        "num_sales":        len(parsed_prices),
-        "average_price":    round(average_price, 2),
-        "median_price":     round(median_price, 2),
-        "lowest_price":     round(lowest_price, 2),
-        "highest_price":    round(highest_price, 2),
-        "trend":            trend,
-        "trend_pct_change": round(trend_pct_change, 1),
-        "volatility":       volatility,
-        "volatility_std":   round(std_dev, 2),
-        "rarity_baseline":  rarity_baseline,
-        "composite_score":  composite_score,
-        "recommendation":   recommendation,
+        "card_name":         card_name,
+        "num_sales":         len(parsed),
+        "average_price":     round(avg, 2),
+        "median_price":      round(median, 2),
+        "lowest_price":      round(low, 2),
+        "highest_price":     round(high, 2),
+        "trend":             trend,
+        "trend_pct_change":  round(trend_pct, 1),
+        "volatility":        volatility,
+        "volatility_std":    round(std_dev, 2),
+        "rarity_baseline":   rarity_baseline,
+        "popularity_score":  round(pop_score, 1),
+        "scarcity_score":    round(scar_score, 1),
+        "psa9_price":        psa9_price,
+        "psa10_price":       psa10_price,
+        "grade_premium_pct": grade_premium_pct,
+        "composite_score":   composite_score,
+        "recommendation":    rec,
     }
 
 
+# ---------------------------------------------------------------------------
+# Smoke-test
+# ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    # -----------------------------------------------------------------------
-    # Smoke-test: three scenarios
-    # -----------------------------------------------------------------------
+    base_charizard = {
+        "id": "base1-4", "name": "Charizard", "rarity": "Rare Holo",
+    }
+    modern_pikachu = {
+        "id": "sm1-35", "name": "Pikachu", "rarity": "Common",
+    }
+    recent_common = {
+        "id": "sv1-50", "name": "Magnemite", "rarity": "Common",
+    }
 
-    # Scenario 1: rising, cheap relative to Rare Holo range → should Buy/Strong Buy
-    listings_rising = [
-        {"price": "$18.00"},  # recent (most-recent-first)
-        {"price": "$17.50"},
-        {"price": "$16.00"},
-        {"price": "$15.50"},
-        {"price": "$15.00"},
-        {"price": "$10.00"},  # older
-        {"price": "$10.00"},
-        {"price": "$9.50"},
-        {"price": "$9.00"},
-        {"price": "$8.50"},
-    ]
-    rare_holo_details = {"rarity": "Rare Holo"}
+    listings = [{"price": f"${p:.2f}"} for p in
+                [45, 48, 42, 50, 47, 55, 60, 58, 62, 65,
+                 63, 61, 59, 57, 55, 53, 51, 49, 47, 45]]
 
-    r1 = analyze_card("Charizard Base Set", listings_rising, rare_holo_details)
-    print("=== Scenario 1: rising price, within Rare Holo range ===")
-    for k, v in r1.items():
-        print(f"  {k:<20}: {v}")
-
-    # Scenario 2: falling, stable, within Rare range
-    listings_falling = [
-        {"price": "$5.00"},
-        {"price": "$5.50"},
-        {"price": "$6.00"},
-        {"price": "$6.50"},
-        {"price": "$7.00"},
-        {"price": "$10.00"},
-        {"price": "$11.00"},
-        {"price": "$12.00"},
-        {"price": "$13.00"},
-        {"price": "$14.00"},
-    ]
-    r2 = analyze_card("Blastoise Base Set", listings_falling, {"rarity": "Rare"})
-    print("\n=== Scenario 2: falling price, within Rare range ===")
-    for k, v in r2.items():
-        print(f"  {k:<20}: {v}")
-
-    # Scenario 3: fewer than 5 prices → Insufficient Data
-    r3 = analyze_card("Pikachu Promo", [{"price": "$3.00"}, {"price": "$4.00"}])
-    print("\n=== Scenario 3: fewer than 5 prices ===")
-    for k, v in r3.items():
-        print(f"  {k:<20}: {v}")
+    for label, details in [
+        ("Base Set Charizard (vintage Rare Holo)", base_charizard),
+        ("SM Pikachu (modern Common)",             modern_pikachu),
+        ("SV Magnemite (recent Common)",           recent_common),
+    ]:
+        result = analyze_card(details["name"], listings, details)
+        print(f"\n=== {label} ===")
+        for k, v in result.items():
+            print(f"  {k:<22}: {v}")

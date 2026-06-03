@@ -1,492 +1,674 @@
 import sys
 import os
 import time
+import csv
 import streamlit as st
 
-# Make src/ importable without installing it as a package
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 from card_db import CardDatabase
 from scraper import get_card_prices
 from analyzer import analyze_card
 
-# ---------------------------------------------------------------------------
-# Page config — must be the first Streamlit call in the script
-# ---------------------------------------------------------------------------
+# ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Pokemon Card Valuation Tool",
-    page_icon="🃏",
+    page_title="PokéValue",
+    page_icon="🎴",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-# ---------------------------------------------------------------------------
-# Load the card database once and cache it for the lifetime of the session.
-# st.cache_resource keeps the object alive across reruns without re-reading
-# all 173 JSON files every time the user interacts with the page.
-# ---------------------------------------------------------------------------
+# ── Global CSS ─────────────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;600&display=swap');
+
+/* ── Base ── */
+html, body, .stApp {
+    background-color: #0d0f1a !important;
+    color: #e8e8e8;
+}
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background: #10121f !important;
+    border-right: 2px solid #FFDE00 !important;
+}
+[data-testid="stSidebar"] * { color: #e8e8e8 !important; }
+
+/* Hide default streamlit chrome */
+#MainMenu, footer, header { visibility: hidden; }
+
+/* ── Typography ── */
+h1, h2, h3 { font-family: 'Press Start 2P', monospace !important; }
+h1 { font-size: 1.6rem !important; line-height: 2.2rem !important; }
+h2 { font-size: 1.1rem !important; line-height: 1.8rem !important; color: #FFDE00 !important; }
+h3 { font-size: 0.8rem !important; line-height: 1.4rem !important; color: #aaa !important; }
+p, span, div, label { font-family: 'Inter', sans-serif !important; }
+
+/* ── Hero banner ── */
+.hero {
+    background: linear-gradient(135deg, #CC0000 0%, #880000 60%, #0d0f1a 100%);
+    border: 3px solid #FFDE00;
+    border-radius: 12px;
+    padding: 2.5rem 2rem 2rem;
+    margin-bottom: 1.8rem;
+    position: relative;
+    overflow: hidden;
+}
+.hero::before {
+    content: "⬤";
+    font-size: 28rem;
+    color: rgba(255,255,255,0.03);
+    position: absolute;
+    top: -8rem; right: -8rem;
+    line-height: 1;
+    pointer-events: none;
+}
+.hero-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 2.4rem;
+    color: #FFDE00;
+    text-shadow: 4px 4px 0 #000, -1px -1px 0 #CC0000;
+    margin: 0 0 0.7rem 0;
+    letter-spacing: 2px;
+}
+.hero-sub {
+    font-family: 'Inter', sans-serif;
+    color: rgba(255,255,255,0.85);
+    font-size: 1rem;
+    margin: 0;
+}
+
+/* ── Panel card ── */
+.panel {
+    background: #161828;
+    border: 1px solid #2a2d45;
+    border-radius: 10px;
+    padding: 1.2rem 1.4rem;
+    margin-bottom: 1rem;
+}
+.panel-gold {
+    border-color: #FFDE00;
+}
+.panel-red {
+    border-color: #CC0000;
+}
+
+/* ── Recommendation badge ── */
+.badge {
+    display: inline-block;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 0.65rem;
+    padding: 0.45rem 0.9rem;
+    border-radius: 6px;
+    letter-spacing: 1px;
+}
+.badge-strong-buy  { background:#15803d; color:#fff; border:2px solid #22c55e; }
+.badge-buy         { background:#854d0e; color:#fff; border:2px solid #eab308; }
+.badge-fair        { background:#374151; color:#ccc; border:2px solid #6b7280; }
+.badge-sell        { background:#9a3412; color:#fff; border:2px solid #f97316; }
+.badge-strong-sell { background:#7f1d1d; color:#fff; border:2px solid #ef4444; }
+.badge-na          { background:#1f2937; color:#6b7280; border:2px solid #374151; }
+
+/* ── HP-style score bar ── */
+.score-wrap { margin: 0.5rem 0 1rem; }
+.score-label {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 0.55rem;
+    color: #9ca3af;
+    margin-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+}
+.score-track {
+    background: #1e2035;
+    border-radius: 8px;
+    height: 22px;
+    border: 2px solid #374151;
+    position: relative;
+    overflow: hidden;
+}
+.score-fill {
+    height: 100%;
+    border-radius: 6px;
+    transition: width 0.4s ease;
+    position: relative;
+}
+.score-text {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 0.6rem;
+    text-align: right;
+    color: #FFDE00;
+    margin-top: 4px;
+}
+
+/* ── Type badge ── */
+.type-badge {
+    display: inline-block;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 12px;
+    margin-right: 4px;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* ── Signal row ── */
+.signal-row {
+    display: flex;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+    margin: 0.6rem 0;
+}
+.signal-chip {
+    background: #1e2035;
+    border: 1px solid #2a2d45;
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 0.8rem;
+    font-family: 'Inter', sans-serif;
+    white-space: nowrap;
+}
+
+/* ── PSA box ── */
+.psa-box {
+    background: linear-gradient(135deg, #1a1420 0%, #241930 100%);
+    border: 2px solid #7c3aed;
+    border-radius: 10px;
+    padding: 1rem;
+    text-align: center;
+}
+.psa-grade {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 0.75rem;
+    color: #a78bfa;
+    margin-bottom: 0.3rem;
+}
+.psa-price {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 1.1rem;
+    color: #FFDE00;
+}
+
+/* ── Pop card (popularity dashboard) ── */
+.pop-card {
+    background: #161828;
+    border: 1px solid #2a2d45;
+    border-radius: 10px;
+    padding: 0.8rem;
+    text-align: center;
+    transition: border-color 0.2s;
+}
+.pop-card:hover { border-color: #FFDE00; }
+.pop-name {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 0.55rem;
+    color: #FFDE00;
+    margin-top: 0.5rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.pop-score {
+    font-size: 0.8rem;
+    color: #9ca3af;
+    margin-top: 0.2rem;
+}
+
+/* ── Stat metric ── */
+.stat-box {
+    background: #161828;
+    border: 1px solid #2a2d45;
+    border-radius: 8px;
+    padding: 1rem;
+    text-align: center;
+}
+.stat-val {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 1.2rem;
+    color: #FFDE00;
+}
+.stat-lbl {
+    font-size: 0.75rem;
+    color: #9ca3af;
+    margin-top: 0.4rem;
+}
+
+/* ── Buttons ── */
+.stButton > button {
+    font-family: 'Press Start 2P', monospace !important;
+    font-size: 0.6rem !important;
+    background: #CC0000 !important;
+    color: #FFDE00 !important;
+    border: 2px solid #FFDE00 !important;
+    border-radius: 6px !important;
+    padding: 0.6rem 1.2rem !important;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.stButton > button:hover {
+    background: #FFDE00 !important;
+    color: #000 !important;
+}
+
+/* Inputs */
+.stTextInput input, .stSelectbox select, div[data-baseweb="select"] {
+    background: #161828 !important;
+    border: 1px solid #2a2d45 !important;
+    color: #e8e8e8 !important;
+    border-radius: 6px !important;
+    font-family: 'Inter', sans-serif !important;
+}
+.stTextInput input:focus { border-color: #FFDE00 !important; outline: none !important; }
+
+/* Divider */
+hr { border-color: #2a2d45 !important; }
+
+/* Dataframe */
+[data-testid="stDataFrame"] { border: 1px solid #2a2d45; border-radius: 8px; }
+</style>
+""", unsafe_allow_html=True)
+
+# ── Type colour map ─────────────────────────────────────────────────────────────
+TYPE_COLORS = {
+    "Fire":      "#e25822", "Water":    "#4d9be6", "Grass":    "#5db85d",
+    "Lightning": "#f7d716", "Psychic":  "#e96bb0", "Fighting": "#c04a28",
+    "Darkness":  "#5a5a8a", "Metal":    "#9badb7", "Dragon":   "#7038f8",
+    "Fairy":     "#f0a0d0", "Colorless":"#a8a878",
+}
+
+# ── Helpers ─────────────────────────────────────────────────────────────────────
+
+def fmt_price(v) -> str:
+    return f"${v:,.2f}" if v is not None else "N/A"
+
+
+def rec_badge(rec: str) -> str:
+    classes = {
+        "Strong Buy":  "badge-strong-buy",
+        "Buy":         "badge-buy",
+        "Fair Value":  "badge-fair",
+        "Sell":        "badge-sell",
+        "Strong Sell": "badge-strong-sell",
+    }
+    cls = classes.get(rec, "badge-na")
+    return f'<span class="badge {cls}">{rec}</span>'
+
+
+def score_bar(score) -> str:
+    if score is None:
+        return "<p style='color:#6b7280;font-size:0.8rem;'>No score</p>"
+    pct = (score + 100) / 200 * 100
+    pct = max(0, min(100, pct))
+    if score >= 30:
+        color = "linear-gradient(90deg,#15803d,#22c55e)"
+    elif score >= -30:
+        color = "linear-gradient(90deg,#854d0e,#eab308)"
+    else:
+        color = "linear-gradient(90deg,#7f1d1d,#ef4444)"
+    sign = "+" if score >= 0 else ""
+    return f"""
+    <div class="score-wrap">
+      <div class="score-label"><span>UNDERVALUED</span><span>OVERVALUED</span></div>
+      <div class="score-track">
+        <div class="score-fill" style="width:{pct}%;background:{color};"></div>
+      </div>
+      <div class="score-text">{sign}{score} / 100</div>
+    </div>"""
+
+
+def type_badges(types: list) -> str:
+    html = ""
+    for t in (types or []):
+        color = TYPE_COLORS.get(t, "#555")
+        html += f'<span class="type-badge" style="background:{color};color:#fff;">{t}</span>'
+    return html
+
+
+def signal_chips(result: dict) -> str:
+    chips = []
+    trend = result.get("trend")
+    pct   = result.get("trend_pct_change")
+    if trend:
+        icon = "▲" if trend == "rising" else ("▼" if trend == "falling" else "━")
+        sign = "+" if (pct or 0) >= 0 else ""
+        chips.append(f'{icon} Trend: {trend.title()} ({sign}{pct:.1f}%)' if pct is not None else f"{icon} {trend.title()}")
+    if result.get("volatility"):
+        chips.append(f"≈ {result['volatility'].title()} volatility")
+    if result.get("rarity_baseline"):
+        chips.append(f"◈ {result['rarity_baseline'].title()}")
+    pop = result.get("popularity_score")
+    if pop is not None:
+        chips.append(f"★ Popularity {pop:.0f}/100")
+    scar = result.get("scarcity_score")
+    if scar is not None:
+        chips.append(f"⧖ Scarcity {scar:.0f}/100")
+    return "".join(f'<span class="signal-chip">{c}</span>' for c in chips)
+
+
+# ── Data loaders ────────────────────────────────────────────────────────────────
+
 @st.cache_resource(show_spinner="Loading card database…")
-def load_database() -> CardDatabase:
+def load_database():
     return CardDatabase()
+
+
+@st.cache_data
+def load_popularity():
+    path = os.path.join("data", "popularity.csv")
+    rows = []
+    if os.path.exists(path):
+        with open(path, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+    return sorted(rows, key=lambda r: float(r["score"]), reverse=True)
+
+
+@st.cache_data
+def get_rare_set_names(db_key=None):
+    return sorted({c["set_name"] for c in db.get_rare_cards()})
 
 
 db = load_database()
 
-# ---------------------------------------------------------------------------
-# Sidebar — scan filters
-# These widgets render in the sidebar panel and their values are read on every
-# rerun, so no session state is needed; they're just local variables here.
-# ---------------------------------------------------------------------------
-
-# Available rarity options for the scan multiselect.
-# These are the four tiers users are most likely to care about.
+# ── Sidebar ─────────────────────────────────────────────────────────────────────
 SCAN_RARITY_OPTIONS = ["Rare Holo", "Rare Ultra", "Rare Secret", "Rare Rainbow"]
 
-@st.cache_data
-def get_rare_set_names() -> list[str]:
-    """
-    Return a sorted list of unique set names that contain at least one rare card.
-    Cached so the 6 000+ card list is only iterated once per session.
-    """
-    return sorted({c["set_name"] for c in db.get_rare_cards()})
-
 with st.sidebar:
-    st.header("⚙️ Scan Filters")
-    st.markdown("Applied to the **Bulk Rare Card Scan** below.")
+    st.markdown("### ⚙ SCAN FILTERS")
+    st.markdown("---")
+    selected_rarities = st.multiselect("Rarity", SCAN_RARITY_OPTIONS, default=SCAN_RARITY_OPTIONS)
+    selected_sets     = st.multiselect("Sets (empty = all)", get_rare_set_names(), default=[])
+    max_cards         = st.number_input("Max cards", 10, 500, 50, 10)
+    sort_order        = st.radio("Sort", ["Highest score first", "Lowest score first"], index=0)
+    st.markdown("---")
+    st.markdown("<p style='font-size:0.7rem;color:#555;'>PokéValue v0.1 · Simulated prices</p>", unsafe_allow_html=True)
 
-    # Rarity filter — default to all four tiers selected ("Rare Holo and above")
-    selected_rarities = st.multiselect(
-        "Rarity",
-        options=SCAN_RARITY_OPTIONS,
-        default=SCAN_RARITY_OPTIONS,
-        help="Only cards matching one of these rarities will be scanned.",
-    )
+# ── Hero ─────────────────────────────────────────────────────────────────────────
+st.markdown("""
+<div class="hero">
+  <p class="hero-title">🎴 POKÉVALUE</p>
+  <p class="hero-sub">Card valuation powered by scarcity, popularity & simulated market data</p>
+</div>
+""", unsafe_allow_html=True)
 
-    # Set filter — default to empty which the scan treats as "all sets"
-    all_set_names = get_rare_set_names()
-    selected_sets = st.multiselect(
-        "Sets  (leave empty to include all)",
-        options=all_set_names,
-        default=[],
-        help="Restrict the scan to specific sets. Leave blank to scan every set.",
-    )
+# ── Popularity dashboard ─────────────────────────────────────────────────────────
+pop_data = load_popularity()
 
-    # How many cards to analyse in one scan run
-    max_cards = st.number_input(
-        "Max cards to scan",
-        min_value=10,
-        max_value=500,
-        value=50,
-        step=10,
-        help="The candidate pool is filtered first, then capped at this number.",
-    )
+if pop_data:
+    st.markdown("## 🌟 POPULARITY RANKINGS")
+    st.markdown("<p style='color:#9ca3af;margin-bottom:1rem;'>12-month Google Trends interest · anchored to Pikachu baseline</p>", unsafe_allow_html=True)
 
-    # Sort direction for the results table
-    sort_order = st.radio(
-        "Sort results by composite score",
-        options=["Highest first", "Lowest first"],
-        index=0,
-        help="Highest first surfaces the most undervalued cards at the top; "
-             "Lowest first surfaces the most overvalued.",
-    )
+    top = pop_data[:10]
+    cols = st.columns(len(top))
 
-# ---------------------------------------------------------------------------
-# Helper utilities
-# ---------------------------------------------------------------------------
+    for col, row in zip(cols, top):
+        name  = row["name"]
+        score = float(row["score"])
+        # Try to find a card image for this Pokemon
+        matches = db.search_card(name)
+        img_url = None
+        if matches:
+            details = db.get_card_details(matches[0]["name"], matches[0]["set_name"])
+            if details and details.get("images"):
+                img_url = details["images"].get("small")
 
-def fmt_price(value) -> str:
-    """Format a float as a dollar string, or return 'N/A'."""
-    return f"${value:,.2f}" if value is not None else "N/A"
+        with col:
+            if img_url:
+                st.image(img_url, use_container_width=True)
+            else:
+                st.markdown(f"<div style='height:80px;background:#1e2035;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;'>?</div>", unsafe_allow_html=True)
+            # Popularity bar
+            bar_pct = score / 100 * 100
+            bar_color = "#FFDE00" if score >= 40 else ("#f97316" if score >= 15 else "#6b7280")
+            st.markdown(f"""
+            <div class='pop-name'>{name.upper()}</div>
+            <div style='background:#1e2035;border-radius:4px;height:6px;margin:4px 0;'>
+              <div style='width:{bar_pct:.0f}%;height:100%;background:{bar_color};border-radius:4px;'></div>
+            </div>
+            <div class='pop-score'>{score:.1f} / 100</div>
+            """, unsafe_allow_html=True)
 
+    st.markdown("---")
 
-def recommendation_color(rec: str) -> str:
-    """Map a recommendation label to a CSS hex colour."""
-    colors = {
-        "Strong Buy":  "#22c55e",   # green-500
-        "Buy":         "#86efac",   # green-300
-        "Fair Value":  "#9ca3af",   # grey-400
-        "Sell":        "#fb923c",   # orange-400
-        "Strong Sell": "#ef4444",   # red-500
-    }
-    return colors.get(rec, "#9ca3af")
+# ── Quick stats row ──────────────────────────────────────────────────────────────
+all_cards  = db._cards if hasattr(db, "_cards") else []
+total_sets = len({c.get("set_name") for c in all_cards}) if all_cards else "—"
+rare_count = len(db.get_rare_cards())
 
+c1, c2, c3, c4 = st.columns(4)
+for col, val, lbl in [
+    (c1, f"{len(all_cards):,}" if all_cards else "—", "CARDS IN DB"),
+    (c2, str(total_sets),                              "SETS"),
+    (c3, str(rare_count),                              "RARE+ CARDS"),
+    (c4, str(len(pop_data)),                           "TRACKED SPECIES"),
+]:
+    col.markdown(f"""
+    <div class="stat-box">
+      <div class="stat-val">{val}</div>
+      <div class="stat-lbl">{lbl}</div>
+    </div>""", unsafe_allow_html=True)
 
-def recommendation_emoji(rec: str) -> str:
-    emojis = {
-        "Strong Buy":  "🟢",
-        "Buy":         "🟡",
-        "Fair Value":  "⚪",
-        "Sell":        "🟠",
-        "Strong Sell": "🔴",
-    }
-    return emojis.get(rec, "⬛")
+st.markdown("---")
 
+# ── Session state ────────────────────────────────────────────────────────────────
+for key, default in [("search_results", []), ("selected_card", None), ("analysis_result", None)]:
+    if key not in st.session_state:
+        st.session_state[key] = default
 
-def composite_bar(score) -> str:
-    """Render a 20-cell block bar showing position on the -100 → +100 scale."""
-    if score is None:
-        return "N/A"
-    filled = round((score + 100) / 200 * 20)
-    filled = max(0, min(20, filled))
-    sign = "+" if score >= 0 else ""
-    return "█" * filled + "░" * (20 - filled) + f"  {sign}{score}"
+# ── Section 1: Card search ───────────────────────────────────────────────────────
+st.markdown("## 🔍 SEARCH A CARD")
 
-
-def fetch_and_analyse(card_label: str, card_details: dict | None = None) -> dict:
-    """Fetch prices for one card and run the full analysis."""
-    prices = get_card_prices(card_label)
-    return analyze_card(card_label, prices, card_details)
-
-
-def display_valuation(result: dict):
-    """
-    Render the full valuation report for one card using Streamlit components.
-    Key numbers use st.metric(); recommendation uses coloured HTML.
-    """
-    rec   = result.get("recommendation", "Insufficient Data")
-    color = recommendation_color(rec)
-    emoji = recommendation_emoji(rec)
-
-    # --- Recommendation banner ---
-    st.markdown(
-        f"<h2 style='color:{color};'>{emoji} {rec}</h2>",
-        unsafe_allow_html=True,
-    )
-
-    # --- Key metrics row ---
-    col1, col2, col3, col4, col5 = st.columns(5)
-
-    col1.metric("Avg Price",    fmt_price(result.get("average_price")))
-    col2.metric("Median Price", fmt_price(result.get("median_price")))
-    col3.metric("Lowest",       fmt_price(result.get("lowest_price")))
-    col4.metric("Highest",      fmt_price(result.get("highest_price")))
-    col5.metric("Sales Found",  result.get("num_sales", 0))
-
-    st.divider()
-
-    # --- Score bar + signal details ---
-    col_bar, col_signals = st.columns([2, 3])
-
-    with col_bar:
-        st.subheader("Composite Score")
-        # Display the score as a large number metric with the bar below it
-        score = result.get("composite_score")
-        st.metric(
-            label="Score  (−100 undervalued → +100 overvalued)",
-            value=score if score is not None else "N/A",
-        )
-        # Monospace block bar for visual reference
-        st.code(composite_bar(score), language=None)
-
-    with col_signals:
-        st.subheader("Signals")
-
-        # Trend — show direction and percentage change
-        trend     = result.get("trend")
-        trend_pct = result.get("trend_pct_change")
-        if trend and trend_pct is not None:
-            sign = "+" if trend_pct >= 0 else ""
-            trend_str = f"{trend.capitalize()}  ({sign}{trend_pct:.1f}%)"
-        else:
-            trend_str = "N/A"
-        st.markdown(f"**📈 Price Trend:** {trend_str}")
-
-        # Volatility — label plus standard deviation
-        vol     = result.get("volatility")
-        vol_std = result.get("volatility_std")
-        if vol and vol_std is not None:
-            vol_str = f"{vol.capitalize()}  (σ = {fmt_price(vol_std)})"
-        else:
-            vol_str = "N/A"
-        st.markdown(f"**📊 Volatility:** {vol_str}")
-
-        # Rarity baseline — only present when card_details was passed in
-        baseline = result.get("rarity_baseline") or "N/A (no rarity data)"
-        st.markdown(f"**💎 Rarity Baseline:** {baseline.replace('_', ' ').title()}")
-
-
-# ---------------------------------------------------------------------------
-# App layout
-# ---------------------------------------------------------------------------
-
-st.title("🃏 Pokemon Card Valuation Tool")
-st.markdown(
-    "Search any Pokemon card to see a full market valuation — "
-    "or scan the rare card pool to surface **undervalued** and **overvalued** picks."
-)
-
-st.divider()
-
-# ============================================================
-# Session state initialisation
-# Keys are set only on the very first run; subsequent reruns
-# leave existing values untouched so results persist across
-# widget interactions.
-# ============================================================
-
-# List of card dicts returned by the last Search press
-if "search_results" not in st.session_state:
-    st.session_state.search_results = []
-
-# The card dict the user has selected in the dropdown
-if "selected_card" not in st.session_state:
-    st.session_state.selected_card = None
-
-# The full analysis dict; cleared only when Search runs again
-if "analysis_result" not in st.session_state:
-    st.session_state.analysis_result = None
-
-# ============================================================
-# Section 1: Search a specific card
-# ============================================================
-st.header("🔍 Search a Card")
-
-search_query = st.text_input("Card name", placeholder="e.g. Charizard, Pikachu, Lugia…")
-search_btn   = st.button("Search", type="primary")
+search_query = st.text_input("", placeholder="Charizard, Pikachu, Lugia…", label_visibility="collapsed")
+search_btn   = st.button("SEARCH", type="primary")
 
 if search_btn:
-    if not search_query.strip():
-        st.warning("Please enter a card name to search.")
+    q = search_query.strip()
+    if not q:
+        st.warning("Enter a card name.")
     else:
-        # Run the search and save the full result list to session state so
-        # the dropdown stays visible on every subsequent rerun — not just the
-        # one triggered by clicking Search.
-        matches = db.search_card(search_query.strip())
-
+        matches = db.search_card(q)
         if not matches:
-            st.warning(f"No cards found matching '{search_query}'.")
-            # Clear stale results from a previous search
-            st.session_state.search_results = []
-            st.session_state.selected_card  = None
+            st.warning(f"No cards found for '{q}'.")
+            st.session_state.search_results  = []
+            st.session_state.selected_card   = None
             st.session_state.analysis_result = None
         else:
-            # Persist the results list; reset selected card and analysis so
-            # the old report doesn't linger after a brand-new search.
             st.session_state.search_results  = matches
             st.session_state.selected_card   = matches[0]
             st.session_state.analysis_result = None
 
-# Render the dropdown whenever we have search results in session state —
-# this keeps it visible even after the user clicks "Analyse" or changes
-# any other widget (every widget interaction triggers a full rerun).
 if st.session_state.search_results:
     matches = st.session_state.search_results
-
-    # Build human-readable option strings for the selectbox
     options = [
         f"{c['name']} — {c['set_name']} #{c['number']} ({c['rarity'] or 'Unknown'})"
         for c in matches
     ]
-
-    # Determine which index was previously selected so the dropdown doesn't
-    # jump back to position 0 on every rerun.
-    current_card = st.session_state.selected_card
-    try:
-        current_idx = matches.index(current_card) if current_card in matches else 0
-    except ValueError:
-        current_idx = 0
+    current = st.session_state.selected_card
+    try:    current_idx = matches.index(current) if current in matches else 0
+    except: current_idx = 0
 
     chosen_idx = st.selectbox(
-        f"{len(matches)} match(es) found — select one to analyse:",
+        f"{len(matches)} match(es) — pick one:",
         range(len(options)),
         format_func=lambda i: options[i],
         index=current_idx,
-        # key is omitted intentionally: we manage state ourselves below so
-        # that changing the dropdown does NOT wipe the existing analysis_result.
     )
-
-    # Write the newly selected card back to session state so it survives
-    # the next rerun, but do NOT clear analysis_result here — the report
-    # should only disappear when the user explicitly clicks Analyse again.
     st.session_state.selected_card = matches[chosen_idx]
 
-    analyse_btn = st.button("Analyse Card", type="secondary")
+    if st.button("ANALYSE CARD"):
+        card      = st.session_state.selected_card
+        label     = f"{card['name']} ({card['set_name']})"
+        details   = db.get_card_details(card["name"], card["set_name"])
+        with st.spinner("Crunching numbers…"):
+            st.session_state.analysis_result = analyze_card(label, get_card_prices(label), details)
 
-    if analyse_btn:
-        chosen_card  = st.session_state.selected_card
-        card_label   = f"{chosen_card['name']} ({chosen_card['set_name']})"
-
-        # Load full card details so analyze_card() can run the rarity check
-        card_details = db.get_card_details(
-            chosen_card["name"], chosen_card["set_name"]
-        )
-
-        with st.spinner(f"Fetching prices for {card_label}…"):
-            result = fetch_and_analyse(card_label, card_details)
-
-        # Store the result in session state so it persists across reruns;
-        # display_valuation() reads from here, not from a local variable.
-        st.session_state.analysis_result = result
-
-# Render the analysis whenever a result exists in session state.
-# This block is intentionally outside every button/widget conditional so
-# the report stays on screen regardless of what the user does next.
+# ── Analysis display ─────────────────────────────────────────────────────────────
 if st.session_state.analysis_result:
-    result = st.session_state.analysis_result
-    st.subheader(result.get("card_name", ""))
-    display_valuation(result)
+    r       = st.session_state.analysis_result
+    card    = st.session_state.selected_card
+    details = db.get_card_details(card["name"], card["set_name"]) if card else None
 
-st.divider()
+    st.markdown("---")
 
-# ============================================================
-# Section 2 & 3: Bulk scans (undervalued / overvalued)
-# ============================================================
-st.header("📋 Bulk Rare Card Scan")
-st.markdown(
-    "Applies the sidebar filters, then analyses up to **max cards** and surfaces "
-    "undervalued or overvalued picks. Adjust the filters in the sidebar before scanning."
-)
+    # Two-column layout: card image left, analysis right
+    img_col, info_col = st.columns([1, 2], gap="large")
 
-col_under, col_over = st.columns(2)
-scan_undervalued = col_under.button("🟢 Show Undervalued Cards", use_container_width=True)
-scan_overvalued  = col_over.button("🔴 Show Overvalued Cards",  use_container_width=True)
+    with img_col:
+        if details and details.get("images"):
+            st.image(details["images"].get("large") or details["images"].get("small"), use_container_width=True)
+        else:
+            st.markdown("<div style='background:#1e2035;border-radius:12px;height:340px;display:flex;align-items:center;justify-content:center;font-size:3rem;'>🃏</div>", unsafe_allow_html=True)
+
+        # PSA graded prices below image
+        p9  = r.get("psa9_price")
+        p10 = r.get("psa10_price")
+        if p9 and p10:
+            st.markdown("<br>", unsafe_allow_html=True)
+            g1, g2 = st.columns(2)
+            with g1:
+                st.markdown(f"""
+                <div class="psa-box">
+                  <div class="psa-grade">PSA 9</div>
+                  <div class="psa-price">{fmt_price(p9)}</div>
+                </div>""", unsafe_allow_html=True)
+            with g2:
+                st.markdown(f"""
+                <div class="psa-box">
+                  <div class="psa-grade">PSA 10</div>
+                  <div class="psa-price">{fmt_price(p10)}</div>
+                </div>""", unsafe_allow_html=True)
+            prem = r.get("grade_premium_pct")
+            if prem:
+                st.markdown(f"<p style='text-align:center;color:#a78bfa;font-size:0.75rem;margin-top:0.4rem;'>+{prem:,.0f}% grading premium</p>", unsafe_allow_html=True)
+
+    with info_col:
+        # Name + types
+        types_html = type_badges(details.get("types", []) if details else [])
+        rarity     = (details or {}).get("rarity", "")
+        set_name   = card.get("set_name", "") if card else ""
+        st.markdown(f"""
+        <h2 style='margin-bottom:0.3rem;'>{r['card_name']}</h2>
+        <p style='color:#9ca3af;font-size:0.85rem;margin-bottom:0.6rem;'>{set_name} · {rarity}</p>
+        {types_html}
+        """, unsafe_allow_html=True)
+
+        # Recommendation badge
+        st.markdown(rec_badge(r.get("recommendation", "N/A")), unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Score bar
+        st.markdown(score_bar(r.get("composite_score")), unsafe_allow_html=True)
+
+        # Price metrics
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Avg",    fmt_price(r.get("average_price")))
+        m2.metric("Median", fmt_price(r.get("median_price")))
+        m3.metric("Low",    fmt_price(r.get("lowest_price")))
+        m4.metric("High",   fmt_price(r.get("highest_price")))
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Signal chips
+        st.markdown(f'<div class="signal-row">{signal_chips(r)}</div>', unsafe_allow_html=True)
+
+        # Extra detail expander
+        with st.expander("Full signal breakdown"):
+            rows = {
+                "Sales analysed":   r.get("num_sales"),
+                "Trend":            f"{r.get('trend','').title()}  ({'+' if (r.get('trend_pct_change') or 0) >= 0 else ''}{r.get('trend_pct_change','N/A'):.1f}%)" if r.get("trend_pct_change") is not None else r.get("trend"),
+                "Volatility":       f"{r.get('volatility','').title()}  (σ={fmt_price(r.get('volatility_std'))})",
+                "Rarity baseline":  r.get("rarity_baseline") or "N/A",
+                "Popularity score": f"{r.get('popularity_score','N/A')} / 100",
+                "Scarcity score":   f"{r.get('scarcity_score','N/A')} / 100",
+                "Grade premium":    f"+{r.get('grade_premium_pct',0):,.0f}%" if r.get("grade_premium_pct") else "N/A",
+                "Composite score":  r.get("composite_score"),
+            }
+            for k, v in rows.items():
+                c_l, c_r = st.columns([1, 2])
+                c_l.markdown(f"**{k}**")
+                c_r.markdown(str(v))
+
+st.markdown("---")
+
+# ── Section 2: Bulk scan ─────────────────────────────────────────────────────────
+st.markdown("## 📋 BULK RARE CARD SCAN")
+st.markdown("<p style='color:#9ca3af;'>Filter in the sidebar, then scan the rare card pool for signals.</p>", unsafe_allow_html=True)
+
+col_u, col_o = st.columns(2)
+scan_under = col_u.button("🟢  SHOW UNDERVALUED", use_container_width=True)
+scan_over  = col_o.button("🔴  SHOW OVERVALUED",  use_container_width=True)
 
 
-def build_candidate_pool(
-    rarities: list[str],
-    sets: list[str],
-    limit: int,
-) -> list[dict]:
-    """
-    Build the list of cards that will actually be scanned.
-
-    Steps:
-      1. Start from db.get_rare_cards() (all rare-holo+ cards).
-      2. Keep only cards whose rarity is in the selected rarities list.
-         If the rarity multiselect is empty, skip no cards (treat as "all").
-      3. Keep only cards whose set_name is in the selected sets list.
-         If the set multiselect is empty, skip no cards (treat as "all sets").
-      4. Cap the list at `limit` so the scan doesn't run for too long.
-    """
+def build_pool(rarities, sets, limit):
     candidates = db.get_rare_cards()
-
-    # Rarity filter — skip if nothing selected (safety valve, UI defaults to all)
-    if rarities:
-        candidates = [c for c in candidates if c.get("rarity") in rarities]
-
-    # Set filter — empty selection means "include all sets"
-    if sets:
-        candidates = [c for c in candidates if c.get("set_name") in sets]
-
-    # Cap to the user-specified maximum
+    if rarities: candidates = [c for c in candidates if c.get("rarity") in rarities]
+    if sets:     candidates = [c for c in candidates if c.get("set_name") in sets]
     return candidates[:limit]
 
 
-def run_bulk_scan(
-    target_signal: str,
-    rarities: list[str],
-    sets: list[str],
-    limit: int,
-    sort_highest_first: bool,
-):
-    """
-    Fetch prices and analyse each card in the filtered candidate pool, then
-    display those whose recommendation matches target_signal.
-
-    Args:
-        target_signal:      'Buy' or 'Sell' (recommendation label to filter on).
-        rarities:           Rarity tiers to include (from sidebar multiselect).
-        sets:               Set names to include; empty means all sets.
-        limit:              Maximum number of cards to analyse.
-        sort_highest_first: True → sort by composite score descending.
-    """
+def run_scan(signal, rarities, sets, limit, highest_first):
     import pandas as pd
-
-    # Step 1: Apply sidebar filters to get the candidate pool
-    candidates = build_candidate_pool(rarities, sets, limit)
-
-    if not candidates:
-        st.warning("No cards match the current sidebar filters. Try broadening your selection.")
+    pool = build_pool(rarities, sets, limit)
+    if not pool:
+        st.warning("No cards match the filters.")
         return
 
-    results = []
-
-    # Step 2: Progress bar — shows card-by-card progress through the pool
-    progress = st.progress(0, text="Starting scan…")
-    total    = len(candidates)
-
-    for i, card in enumerate(candidates):
-        card_label   = f"{card['name']} ({card['set_name']})"
-        card_details = db.get_card_details(card["name"], card["set_name"])
-
-        # Update the progress bar with the current card name and position
-        progress.progress(
-            (i + 1) / total,
-            text=f"Analysing {card_label}  ({i + 1} / {total})",
-        )
-
-        result = fetch_and_analyse(card_label, card_details)
-        results.append(result)
-
-        # Brief pause between requests to avoid hammering the data source
-        if i < total - 1:
-            time.sleep(1)
-
-    # Clear the progress bar now that the scan is complete
+    results  = []
+    progress = st.progress(0, text="Starting…")
+    for i, card in enumerate(pool):
+        label   = f"{card['name']} ({card['set_name']})"
+        details = db.get_card_details(card["name"], card["set_name"])
+        progress.progress((i + 1) / len(pool), text=f"{label}  ({i+1}/{len(pool)})")
+        results.append(analyze_card(label, get_card_prices(label), details))
+        if i < len(pool) - 1:
+            time.sleep(0.5)
     progress.empty()
 
-    # Step 3: Keep only cards whose recommendation matches the requested signal.
-    # 'Buy' catches both "Buy" and "Strong Buy"; 'Sell' catches both sell tiers.
-    flagged = [
-        r for r in results
-        if (r.get("recommendation") or "").lower().startswith(target_signal.lower())
-    ]
+    flagged = [r for r in results if (r.get("recommendation") or "").lower().startswith(signal.lower())]
+    flagged.sort(key=lambda r: r.get("composite_score") or 0, reverse=highest_first)
 
-    # Step 4: Show totals — scanned count and flagged count
-    col_a, col_b, col_c = st.columns(3)
-    col_a.metric("Cards scanned",  total)
-    col_b.metric("Cards flagged",  len(flagged))
-    col_c.metric("Hit rate", f"{len(flagged) / total * 100:.0f}%" if total else "—")
+    a, b, c_ = st.columns(3)
+    a.metric("Scanned",  len(pool))
+    b.metric("Flagged",  len(flagged))
+    c_.metric("Hit rate", f"{len(flagged)/len(pool)*100:.0f}%" if pool else "—")
 
     if not flagged:
-        st.info(f"No {target_signal} signals found. Try adjusting the sidebar filters.")
+        st.info(f"No {signal} signals found.")
         return
 
-    # Step 5: Sort by composite score using the sidebar sort preference
-    flagged.sort(
-        key=lambda r: r.get("composite_score") or 0,
-        reverse=sort_highest_first,
-    )
-
-    # Step 6: Summary table for quick comparison across all flagged cards
-    rows = [
-        {
-            "Card":            r["card_name"],
-            "Avg Price":       fmt_price(r.get("average_price")),
-            "Composite Score": r.get("composite_score"),
-            "Trend":           r.get("trend", "N/A"),
-            "Volatility":      r.get("volatility", "N/A"),
-            "Rarity Baseline": r.get("rarity_baseline") or "N/A",
-            "Recommendation":  r.get("recommendation"),
-        }
-        for r in flagged
-    ]
-
+    rows = [{
+        "Card":       r["card_name"],
+        "Avg Price":  fmt_price(r.get("average_price")),
+        "Score":      r.get("composite_score"),
+        "Popularity": r.get("popularity_score"),
+        "Scarcity":   r.get("scarcity_score"),
+        "PSA 10":     fmt_price(r.get("psa10_price")),
+        "Signal":     r.get("recommendation"),
+    } for r in flagged]
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
-    # Step 7: Full valuation panel for each flagged card in a collapsible expander
     for r in flagged:
-        with st.expander(
-            f"{recommendation_emoji(r.get('recommendation', ''))}  {r['card_name']}"
-        ):
-            display_valuation(r)
+        with st.expander(f"{r['card_name']}  ·  {r.get('recommendation','')}"):
+            st.markdown(score_bar(r.get("composite_score")), unsafe_allow_html=True)
+            st.markdown(f'<div class="signal-row">{signal_chips(r)}</div>', unsafe_allow_html=True)
+            cols = st.columns(4)
+            for col, (lbl, val) in zip(cols, [
+                ("Avg", fmt_price(r.get("average_price"))),
+                ("PSA 9",  fmt_price(r.get("psa9_price"))),
+                ("PSA 10", fmt_price(r.get("psa10_price"))),
+                ("Score",  r.get("composite_score")),
+            ]):
+                col.metric(lbl, val)
 
 
-if scan_undervalued:
-    st.subheader("🟢 Undervalued Cards")
-    run_bulk_scan(
-        target_signal="Buy",
-        rarities=selected_rarities,
-        sets=selected_sets,
-        limit=max_cards,
-        sort_highest_first=(sort_order == "Highest first"),
-    )
+if scan_under:
+    st.markdown("### 🟢 UNDERVALUED PICKS")
+    run_scan("Buy", selected_rarities, selected_sets, max_cards, True)
 
-if scan_overvalued:
-    st.subheader("🔴 Overvalued Cards")
-    run_bulk_scan(
-        target_signal="Sell",
-        rarities=selected_rarities,
-        sets=selected_sets,
-        limit=max_cards,
-        sort_highest_first=(sort_order == "Lowest first"),
-    )
+if scan_over:
+    st.markdown("### 🔴 OVERVALUED PICKS")
+    run_scan("Sell", selected_rarities, selected_sets, max_cards, False)
