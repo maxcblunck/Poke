@@ -491,7 +491,7 @@ for col, val, lbl in [
 st.markdown("---")
 
 # ── Session state ────────────────────────────────────────────────────────────────
-for key, default in [("search_results", []), ("selected_card", None), ("analysis_result", None), ("nm_market_price", None), ("_pw_prices", {}), ("_pw_variants", [])]:
+for key, default in [("search_results", []), ("selected_card", None), ("analysis_result", None), ("nm_market_price", None), ("_pw_prices", {}), ("_pw_variants", []), ("_variant_idx", 0)]:
     if key not in st.session_state:
         st.session_state[key] = default
 
@@ -551,6 +551,7 @@ if st.session_state.search_results:
                 "high":   first.get("high_price"),
             } if is_pw else {}
             st.session_state._pw_variants = first.get("all_variants", []) if is_pw else []
+            st.session_state._variant_idx  = 0
             st.session_state.analysis_result = analyze_card(label, prices, details)
 
 # ── Analysis display ─────────────────────────────────────────────────────────────
@@ -561,7 +562,33 @@ if st.session_state.analysis_result:
 
     st.markdown("---")
 
-    # Two-column layout: card image left, analysis right
+    # ── Variant selector ────────────────────────────────────────────────────────
+    # Shown whenever the API returns multiple printings (e.g. Unlimited,
+    # Shadowless, 1st Edition Shadowless, 1st Edition for Base Set cards).
+    # The selected variant drives all price display below.
+    variants = st.session_state.get("_pw_variants", [])
+    if len(variants) > 1:
+        variant_labels = [v.get("sub_type_name", "Standard") for v in variants]
+        sel_idx = st.selectbox(
+            "Printing variant",
+            range(len(variant_labels)),
+            format_func=lambda i: variant_labels[i],
+            index=st.session_state.get("_variant_idx", 0),
+            key="_variant_selector",
+        )
+        st.session_state._variant_idx = sel_idx
+    else:
+        sel_idx = 0
+
+    active = variants[sel_idx] if variants else {}
+    pw = {
+        "market": active.get("market_price"),
+        "mid":    active.get("mid_price"),
+        "low":    active.get("low_price"),
+        "high":   active.get("high_price"),
+    } if active else (st.session_state.get("_pw_prices") or {})
+
+    # ── Two-column layout ───────────────────────────────────────────────────────
     img_col, info_col = st.columns([1, 2], gap="large")
 
     with img_col:
@@ -570,33 +597,14 @@ if st.session_state.analysis_result:
         else:
             st.markdown("<div style='background:#1e2035;border-radius:12px;height:340px;display:flex;align-items:center;justify-content:center;font-size:3rem;'>🃏</div>", unsafe_allow_html=True)
 
-        # NM Market Price box
-        nm = st.session_state.get("nm_market_price")
+        # NM Market Price — reflects the selected variant
+        nm = pw.get("market") or r.get("average_price")
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown(f"""
         <div class="psa-box" style="border-color:#22c55e;">
           <div class="psa-grade" style="color:#22c55e;">NM MARKET PRICE</div>
-          <div class="psa-price">{fmt_price(nm or r.get("average_price"))}</div>
+          <div class="psa-price">{fmt_price(nm)}</div>
         </div>""", unsafe_allow_html=True)
-
-        # All printing variants from the API
-        variants = st.session_state.get("_pw_variants", [])
-        if len(variants) > 1:
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("<p style='font-size:0.7rem;color:#9ca3af;margin-bottom:0.4rem;'>ALL VARIANTS (TCGPlayer)</p>", unsafe_allow_html=True)
-            for v in variants:
-                label = v.get("sub_type_name", "Normal")
-                mp    = v.get("market_price")
-                lo    = v.get("low_price")
-                hi    = v.get("high_price")
-                is_primary = label == st.session_state.get("_pw_prices", {}).get("sub_type_name") or (variants.index(v) == 0)
-                border = "#22c55e" if is_primary else "#2a2d45"
-                st.markdown(f"""
-                <div style="background:#161828;border:1px solid {border};border-radius:8px;padding:0.5rem 0.8rem;margin-bottom:0.4rem;display:flex;justify-content:space-between;align-items:center;">
-                  <span style="font-size:0.72rem;color:#9ca3af;">{label}</span>
-                  <span style="font-family:'Press Start 2P',monospace;font-size:0.8rem;color:#FFDE00;">{fmt_price(mp)}</span>
-                  <span style="font-size:0.68rem;color:#6b7280;">{fmt_price(lo)} – {fmt_price(hi)}</span>
-                </div>""", unsafe_allow_html=True)
 
     with info_col:
         # Name + types
@@ -616,14 +624,12 @@ if st.session_state.analysis_result:
         # Score bar
         st.markdown(score_bar(r.get("composite_score")), unsafe_allow_html=True)
 
-        # Price metrics — real API values when PokéWallet is the source,
-        # otherwise fall back to the analyzer's calculated stats.
-        pw = st.session_state.get("_pw_prices") or {}
+        # Price metrics — driven by the selected variant
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Market",  fmt_price(pw.get("market") or r.get("average_price")))
-        m2.metric("Mid",     fmt_price(pw.get("mid")    or r.get("median_price")))
-        m3.metric("Low",     fmt_price(pw.get("low")    or r.get("lowest_price")))
-        m4.metric("High",    fmt_price(pw.get("high")   or r.get("highest_price")))
+        m1.metric("Market", fmt_price(pw.get("market") or r.get("average_price")))
+        m2.metric("Mid",    fmt_price(pw.get("mid")    or r.get("median_price")))
+        m3.metric("Low",    fmt_price(pw.get("low")    or r.get("lowest_price")))
+        m4.metric("High",   fmt_price(pw.get("high")   or r.get("highest_price")))
 
         st.markdown("<br>", unsafe_allow_html=True)
 
