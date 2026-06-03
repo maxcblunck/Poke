@@ -3,11 +3,48 @@
 # It will be replaced with a real eBay API call once API access is confirmed.
 # ---------------------------------------------------------------------------
 
+import re
 import random
 import datetime
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlencode
+
+# Module-level cache so CardDatabase is only loaded once across all calls
+_db = None
+
+def _get_base_price(card_name: str) -> float:
+    """
+    Look up the card in CardDatabase and return a valuated simulated price.
+    Falls back to a length-seeded random price if the card isn't found.
+    """
+    global _db
+    try:
+        if _db is None:
+            import os, sys
+            sys.path.insert(0, os.path.dirname(__file__))
+            from card_db import CardDatabase
+            _db = CardDatabase()
+        from card_valuator import valuate_card
+    except Exception:
+        return random.Random(len(card_name)).uniform(5.0, 500.0)
+
+    # card_name may be "Charizard (Base Set)" — parse name and set
+    m = re.match(r"^(.*?)\s*\(([^)]+)\)\s*$", card_name)
+    name     = m.group(1).strip() if m else card_name
+    set_hint = m.group(2).strip() if m else None
+
+    candidates = [c for c in _db._cards if c.get("name", "").lower() == name.lower()]
+    if set_hint:
+        filtered = [c for c in candidates
+                    if set_hint.lower() in c.get("set_name", "").lower()]
+        if filtered:
+            candidates = filtered
+
+    if not candidates:
+        return random.Random(len(card_name)).uniform(5.0, 500.0)
+
+    return valuate_card(candidates[0])["simulated_price"]
 
 # Full set of headers that match what Chrome sends on a real page visit.
 # eBay's bot-detection checks for Accept, Accept-Encoding, and Connection
@@ -139,8 +176,10 @@ def get_card_prices(card_name: str) -> list[dict]:
         ]
 
     # --- Simulated fallback ---
-    rng = random.Random(len(card_name))
-    base_price = rng.uniform(5.0, 500.0)
+    # Use the valuator for a card-aware base price; seed RNG from the name
+    # so variance is reproducible across reruns for the same card.
+    base_price = _get_base_price(card_name)
+    rng = random.Random(card_name)
     today = datetime.date.today()
     results = []
 
