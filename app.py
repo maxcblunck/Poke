@@ -12,8 +12,8 @@ from analyzer import analyze_card
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="PokéValue",
-    page_icon="🎴",
+    page_title="PokéValue — Pokémon Card Analyser",
+    page_icon="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/144.png",
     layout="wide",
     initial_sidebar_state="expanded",
 )
