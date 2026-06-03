@@ -7,7 +7,8 @@ import random
 import datetime
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote_plus
+from playwright.sync_api import sync_playwright
 
 # Full set of headers that match what Chrome sends on a real page visit.
 # eBay's bot-detection checks for Accept, Accept-Encoding, and Connection
@@ -132,87 +133,194 @@ def get_ebay_sold_prices(card_name: str) -> list[dict]:
     return results
 
 
+def get_130point_sold_prices(card_name: str, max_results: int = 20) -> list[dict]:
+    """
+    Fetch sold eBay listings for a Pokemon card from 130point.com using a
+    headed Chromium browser so Cloudflare's JS challenge can complete normally.
+
+    Args:
+        card_name:   The Pokemon card name to search for (e.g. "Charizard VMAX").
+        max_results: Maximum number of listings to return (default 20).
+
+    Returns:
+        A list of dicts with keys: title, price, date_sold, url.
+        Returns an empty list if no results are found or on error.
+    """
+    search_url = f"https://130point.com/sales/?search={quote_plus(card_name)}"
+    results = []
+
+    with sync_playwright() as p:
+        # Headed (non-headless) browser so Cloudflare sees a real Chrome window.
+        # slow_mo adds a 500 ms delay between every Playwright action, which makes
+        # the interaction pattern look more human and gives the CF challenge time
+        # to resolve before we start reading the DOM.
+        browser = p.chromium.launch(headless=False, slow_mo=500)
+        context = browser.new_context(
+            viewport={"width": 1280, "height": 900},
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+        )
+        page = context.new_page()
+
+        try:
+            page.goto(search_url, wait_until="domcontentloaded", timeout=60_000)
+
+            # Skip networkidle — Cloudflare's challenge page keeps polling forever
+            # so networkidle never fires. Instead wait directly for the first real
+            # content selector, giving CF up to 60 s to complete its JS challenge.
+            page.wait_for_selector(
+                "div.item, table#result_table tr, tr.result_row, .sold_item",
+                timeout=20_000,
+            )
+
+            soup = BeautifulSoup(page.content(), "lxml")
+
+            # --- Strategy 1: div.item layout (current desktop layout) ---
+            items = soup.select("div.item")
+            for item in items:
+                title_tag = item.select_one(".item_title, .title, h3, h4")
+                price_tag = item.select_one(".item_price, .price, .sold_price")
+                date_tag  = item.select_one(".item_date, .date, .sold_date, .date_sold")
+                link_tag  = item.select_one("a[href]")
+
+                title     = title_tag.get_text(strip=True) if title_tag else None
+                price     = price_tag.get_text(strip=True) if price_tag else None
+                date_sold = date_tag.get_text(strip=True)  if date_tag  else None
+                url       = link_tag["href"]               if link_tag  else None
+
+                if title or price:
+                    results.append({
+                        "title":     title,
+                        "price":     price,
+                        "date_sold": date_sold,
+                        "url":       url,
+                    })
+                if len(results) >= max_results:
+                    break
+
+            # --- Strategy 2: table row layout (fallback) ---
+            if not results:
+                rows = soup.select("table#result_table tr.result_row, table tr[class*='result']")
+                for row in rows:
+                    cols = row.select("td")
+                    if len(cols) < 3:
+                        continue
+
+                    title_tag = row.select_one("td.title, td:nth-child(2), .item_name")
+                    price_tag = row.select_one("td.price, td.sold_price, td:nth-child(3)")
+                    date_tag  = row.select_one("td.date, td.sold_date, td:nth-child(4)")
+                    link_tag  = row.select_one("a[href]")
+
+                    results.append({
+                        "title":     title_tag.get_text(strip=True) if title_tag else None,
+                        "price":     price_tag.get_text(strip=True) if price_tag else None,
+                        "date_sold": date_tag.get_text(strip=True)  if date_tag  else None,
+                        "url":       link_tag["href"]               if link_tag  else None,
+                    })
+                    if len(results) >= max_results:
+                        break
+
+        except Exception as exc:
+            print(f"[130point scraper] Error: {exc}")
+        finally:
+            context.close()
+            browser.close()
+
+    return results
+
+
 def get_card_prices(card_name: str) -> list[dict]:
     """
-    PLACEHOLDER — returns simulated sold-listing data for a Pokemon card.
-    Will be replaced with a real eBay API call.
+    Return sold listing data for a Pokemon card.
 
-    The price range is seeded from the card name's length so the same card
-    always produces similar (though not identical) prices across calls.
+    Tries 130point.com first via a headed Playwright browser. Falls back to
+    simulated data only when fewer than 5 real listings are returned (e.g.
+    Cloudflare blocked the request or the card has very few sales).
 
     Args:
         card_name: The Pokemon card name (e.g. "Charizard Base Set").
 
     Returns:
-        A list of 20 dicts with keys: title, price, date_sold, source,
+        A list of dicts with keys: title, price, date_sold, source,
         sales_volume (placeholder, currently None).
     """
+    # --- 1. Try 130point.com (requires a real desktop display; fails in Xvfb) ---
+    print(f"[scraper] Trying 130point.com for: {card_name}")
+    real_listings = get_130point_sold_prices(card_name)
 
-    # TODO — when eBay API is approved, extend this function to also return
-    # sales volume data for each listing batch. The new data should include:
-    #
-    #   - total_sold_7d:   total number of copies sold in the last 7 days
-    #   - total_sold_30d:  total number of copies sold in the last 30 days
-    #   - total_sold_90d:  total number of copies sold in the last 90 days
-    #   - velocity_trend:  percentage change comparing last 30 days to the
-    #                      previous 30 days (positive = demand rising,
-    #                      negative = demand falling)
-    #
-    # This data will be used by analyze_card() to calculate:
-    #   - demand_rating:  how actively the card is being bought and sold
-    #   - liquidity:      how quickly a seller can expect to offload a copy
-    #
-    # When implemented, replace the sales_volume placeholder below with the
-    # real dict containing the four fields above, and update analyze_card()
-    # and reporter.py to consume and display the new fields.
+    if len(real_listings) >= 5:
+        print(f"[scraper] Got {len(real_listings)} listings from 130point.")
+        return [
+            {
+                "title":        r["title"],
+                "price":        r["price"],
+                "date_sold":    r["date_sold"],
+                "source":       "130point",
+                "sales_volume": None,
+                "url":          r["url"],
+            }
+            for r in real_listings
+        ]
 
-    # Seed the random number generator with the length of the card name so
-    # that the same card name always produces a similar price distribution.
-    # Using length rather than the full string keeps prices in a believable
-    # range regardless of character encoding differences.
+    # --- 2. Fall back to eBay scraper (works without a display) ---
+    print(f"[scraper] 130point returned {len(real_listings)} result(s) — trying eBay scraper.")
+    try:
+        ebay_listings = get_ebay_sold_prices(card_name)
+    except Exception as exc:
+        print(f"[scraper] eBay scraper error: {exc}")
+        ebay_listings = []
+
+    if len(ebay_listings) >= 5:
+        print(f"[scraper] Got {len(ebay_listings)} listings from eBay.")
+        return [
+            {
+                "title":        r["title"],
+                "price":        r["price"],
+                "date_sold":    r["date_sold"],
+                "source":       "ebay",
+                "sales_volume": None,
+                "url":          r.get("url"),
+            }
+            for r in ebay_listings
+        ]
+
+    print(f"[scraper] eBay also returned {len(ebay_listings)} result(s) — falling back to simulated data.")
+
     rng = random.Random(len(card_name))
-
-    # Build a realistic base price from the seed: between $5 and $500.
-    # Multiplying by the seed produces natural variation between cards of
-    # different name lengths while staying within a sensible market range.
     base_price = rng.uniform(5.0, 500.0)
-
     today = datetime.date.today()
     results = []
 
     for i in range(20):
-        # Vary each individual sale price by ±20% around the base price to
-        # simulate the spread seen across real eBay sold listings.
         price = round(rng.uniform(base_price * 0.80, base_price * 1.20), 2)
-
-        # Pick a random sale date within the last 60 days.
         days_ago = rng.randint(0, 60)
         date_sold = (today - datetime.timedelta(days=days_ago)).strftime("%b %-d, %Y")
-
         results.append({
             "title":        f"{card_name} Pokemon Card (Simulated #{i + 1})",
             "price":        f"${price:.2f}",
             "date_sold":    date_sold,
             "source":       "simulated",
-            # Placeholder — will hold sales volume data once the eBay API is
-            # integrated. Set to None now so downstream code can check for it
-            # without KeyError and start handling it before the real data arrives.
             "sales_volume": None,
         })
 
-    # Sort most-recent-first to match the ordering get_ebay_sold_prices() uses
     results.sort(key=lambda r: r["date_sold"], reverse=True)
-
     return results
 
 
 if __name__ == "__main__":
-    # Quick smoke-test: search for a common card and print results
-    card = "Charizard VMAX"
-    print(f"Fetching sold eBay listings for: {card}\n")
-    listings = get_ebay_sold_prices(card)
+    card = "Charizard Base Set"
+    print(f"=== get_card_prices smoke-test: {card} ===\n")
+    listings = get_card_prices(card)
+    print(f"\nReturned {len(listings)} listing(s):\n")
     for i, listing in enumerate(listings, 1):
-        print(f"{i}. {listing['title']}")
-        print(f"   Price     : {listing['price']}")
-        print(f"   Date sold : {listing['date_sold']}")
-        print(f"   URL       : {listing['url']}\n")
+        print(f"{i:>2}. {listing['title']}")
+        print(f"     Price     : {listing['price']}")
+        print(f"     Date sold : {listing['date_sold']}")
+        print(f"     Source    : {listing['source']}")
+        url = listing.get('url')
+        if url:
+            print(f"     URL       : {url}")
+        print()
