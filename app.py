@@ -1,6 +1,7 @@
 import os
 import time
 import csv
+import base64
 import streamlit as st
 
 from src.card_db import CardDatabase
@@ -267,6 +268,33 @@ hr { border-color: #2a2d45 !important; }
 
 /* Dataframe */
 [data-testid="stDataFrame"] { border: 1px solid #2a2d45; border-radius: 8px; }
+</style>
+""", unsafe_allow_html=True)
+
+# ── Pokéball background pattern ────────────────────────────────────────────────
+# SVG drawn as a 60×60 tile: outer circle, red top half, white bottom half,
+# centre dividing line, and button circle. All fills/strokes at ~0.06 opacity
+# so it reads as a barely-there watermark against the dark background.
+_pokeball_svg = (
+    "<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60'>"
+    "<path d='M12,30 A18,18 0 0,1 48,30' fill='rgba(204,0,0,0.07)' stroke='rgba(255,255,255,0.06)' stroke-width='1.5'/>"
+    "<path d='M12,30 A18,18 0 0,0 48,30' fill='rgba(200,200,200,0.04)' stroke='rgba(255,255,255,0.06)' stroke-width='1.5'/>"
+    "<line x1='12' y1='30' x2='48' y2='30' stroke='rgba(255,255,255,0.07)' stroke-width='2'/>"
+    "<circle cx='30' cy='30' r='18' fill='none' stroke='rgba(255,255,255,0.07)' stroke-width='1.5'/>"
+    "<circle cx='30' cy='30' r='5' fill='rgba(13,15,26,0.6)' stroke='rgba(255,255,255,0.07)' stroke-width='2'/>"
+    "<circle cx='30' cy='30' r='2.5' fill='rgba(255,255,255,0.06)'/>"
+    "</svg>"
+)
+_pokeball_b64 = base64.b64encode(_pokeball_svg.encode()).decode()
+
+st.markdown(f"""
+<style>
+.stApp {{
+    background-image: url("data:image/svg+xml;base64,{_pokeball_b64}");
+    background-repeat: repeat;
+    background-size: 60px 60px;
+    background-attachment: fixed;
+}}
 </style>
 """, unsafe_allow_html=True)
 
