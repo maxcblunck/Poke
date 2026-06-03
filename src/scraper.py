@@ -25,7 +25,7 @@ def _get_base_price(card_name: str) -> float:
             _db = CardDatabase()
         from card_valuator import valuate_card
     except Exception:
-        return random.Random(len(card_name)).uniform(5.0, 500.0)
+        return random.Random(card_name).uniform(5.0, 500.0)
 
     # card_name may be "Charizard (Base Set)" — parse name and set
     m = re.match(r"^(.*?)\s*\(([^)]+)\)\s*$", card_name)
@@ -40,7 +40,7 @@ def _get_base_price(card_name: str) -> float:
             candidates = filtered
 
     if not candidates:
-        return random.Random(len(card_name)).uniform(5.0, 500.0)
+        return random.Random(card_name).uniform(5.0, 500.0)
 
     return valuate_card(candidates[0])["simulated_price"]
 

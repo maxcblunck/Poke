@@ -595,12 +595,8 @@ if st.session_state.analysis_result:
         # Score bar
         st.markdown(score_bar(r.get("composite_score")), unsafe_allow_html=True)
 
-        # Price metrics — use real API values if available, else analyzer stats
-        prices_src  = st.session_state.search_results  # just to check source
-        first_price = None
-        if st.session_state.get("nm_market_price"):
-            # PokéWallet data — pull real low/mid/high from the first listing
-            all_prices  = getattr(st.session_state, "_pw_prices", None)
+        # Price metrics — real API values when PokéWallet is the source,
+        # otherwise fall back to the analyzer's calculated stats.
         pw = st.session_state.get("_pw_prices") or {}
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Market",  fmt_price(pw.get("market") or r.get("average_price")))
