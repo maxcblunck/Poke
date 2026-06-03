@@ -1,5 +1,5 @@
 """
-Standalone test script for the PokéWallet API.
+Standalone test script for the PokeWallet API.
 
 Usage:
     1. Put your API key in the .env file at the project root:
@@ -52,7 +52,7 @@ def search_card(query: str, page: int = 1, limit: int = 5) -> dict:
 
     print(f"GET {url}")
     print(f"Params  : {params}")
-    print(f"Headers : X-API-Key: {headers['X-API-Key'][:12]}…\n")
+    print(f"Headers : X-API-Key: {headers['X-API-Key'][:12]}...\n")
 
     response = requests.get(url, headers=headers, params=params, timeout=15)
 
@@ -83,23 +83,25 @@ def get_card(card_id: str) -> dict:
 
 def main():
     # Search specifically for base1-4 (Base Set Charizard card #4)
-    # The API uses set_id format — "base1 4" queries set code base1, card number 4
+    # The API uses set_id format -- "base1 4" queries set code base1, card number 4
     queries = ["base1 4", "Charizard base1"]
     api_key = get_api_key()
     headers = {"X-API-Key": api_key}
     card_id = None
 
     print("=" * 60)
-    print("PokéWallet API test — Charizard base1-4")
+    print("PokeWallet API test -- Charizard base1-4")
     print("=" * 60 + "\n")
 
-    # ── Step 1: broad search, then scan all pages for Base Set ──────
-    print("Searching 'Charizard' across up to 3 pages (limit=20 each)…\n")
+    # -- Step 1: broad search, then scan all pages for Base Set ------
+    print("Searching 'Charizard 4/102' and 'Charizard 4/65' across pages...\n")
     result = {}
-    for page in range(1, 4):
-        result = search_card("Charizard", page=page, limit=20)
+    for query in ["Charizard 4/102", "Charizard 4/65", "Charizard"]:
+        print(f"Trying query: {query!r}")
+        result = search_card(query, page=1, limit=20)
         cards = result.get("data") or result.get("results") or []
-        print(f"Page {page}: {len(cards)} result(s)")
+        page = 1
+        print(f"  {len(cards)} result(s)")
 
         # Dump the first raw card object on page 1 to reveal the schema
         if cards and page == 1:
@@ -119,9 +121,6 @@ def main():
                 break
         if card_id:
             break
-        total_pages = result.get("pagination", {}).get("total_pages", 1)
-        if page >= total_pages:
-            break
         print()
 
     if not card_id:
@@ -129,25 +128,25 @@ def main():
         print(json.dumps(result, indent=2))
         return
 
-    # ── Step 2: full card detail ─────────────────────────────────
-    print(f"\n── Fetching full details for id: {card_id[:40]}… ──")
+    # -- Step 2: full card detail ---------------------------------
+    print(f"\n-- Fetching full details for id: {card_id[:40]}... --")
     detail = get_card(card_id)
 
-    print("\n── COMPLETE RAW RESPONSE (every field) ─────────────────")
+    print("\n-- COMPLETE RAW RESPONSE (every field) -----------------")
     print(json.dumps(detail, indent=2))
 
-    # ── Step 3: field name summary ───────────────────────────────
-    print("\n── TOP-LEVEL FIELDS ────────────────────────────────────")
+    # -- Step 3: field name summary -------------------------------
+    print("\n-- TOP-LEVEL FIELDS ------------------------------------")
     for k, v in detail.items():
         preview = json.dumps(v)[:80].replace("\n", " ")
         print(f"  {k:<20} : {preview}")
 
-    print("\n── card_info FIELDS ────────────────────────────────────")
+    print("\n-- card_info FIELDS ------------------------------------")
     for k, v in (detail.get("card_info") or {}).items():
         preview = json.dumps(v)[:80].replace("\n", " ")
         print(f"  {k:<20} : {preview}")
 
-    print("\n── tcgplayer FIELDS ────────────────────────────────────")
+    print("\n-- tcgplayer FIELDS ------------------------------------")
     tcg = detail.get("tcgplayer") or {}
     for k, v in tcg.items():
         if k != "prices":
@@ -159,10 +158,10 @@ def main():
 
     cardmarket = detail.get("cardmarket")
     if cardmarket:
-        print("\n── cardmarket FIELDS ───────────────────────────────────")
+        print("\n-- cardmarket FIELDS -----------------------------------")
         print(json.dumps(cardmarket, indent=2))
     else:
-        print("\n── cardmarket: not present ─────────────────────────────")
+        print("\n-- cardmarket: not present -----------------------------")
 
 
 if __name__ == "__main__":
