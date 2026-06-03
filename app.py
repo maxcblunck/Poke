@@ -1,14 +1,11 @@
-import sys
 import os
 import time
 import csv
 import streamlit as st
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
-
-from card_db import CardDatabase
-from scraper import get_card_prices
-from analyzer import analyze_card
+from src.card_db import CardDatabase
+from src.scraper import get_card_prices
+from src.analyzer import analyze_card
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
