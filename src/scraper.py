@@ -67,7 +67,7 @@ def get_ebay_sold_prices(card_name: str) -> list[dict]:
     response = session.get(url, timeout=10)
     response.raise_for_status()
 
-    soup = BeautifulSoup(response.text, "lxml")
+    soup = BeautifulSoup(response.text, "html.parser")
     results = []
 
     for item in soup.select("li.s-item"):
