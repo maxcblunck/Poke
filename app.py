@@ -491,7 +491,7 @@ for col, val, lbl in [
 st.markdown("---")
 
 # ── Session state ────────────────────────────────────────────────────────────────
-for key, default in [("search_results", []), ("selected_card", None), ("analysis_result", None), ("nm_market_price", None), ("_pw_prices", {})]:
+for key, default in [("search_results", []), ("selected_card", None), ("analysis_result", None), ("nm_market_price", None), ("_pw_prices", {}), ("_pw_variants", [])]:
     if key not in st.session_state:
         st.session_state[key] = default
 
@@ -542,13 +542,15 @@ if st.session_state.search_results:
         with st.spinner("Crunching numbers…"):
             prices = get_card_prices(label)
             first  = prices[0] if prices else {}
-            st.session_state.nm_market_price = first.get("market_price")
+            is_pw  = first.get("source") == "pokewallet"
+            st.session_state.nm_market_price = first.get("market_price") if is_pw else None
             st.session_state._pw_prices = {
                 "market": first.get("market_price"),
                 "mid":    first.get("mid_price"),
                 "low":    first.get("low_price"),
                 "high":   first.get("high_price"),
-            } if first.get("source") == "pokewallet" else {}
+            } if is_pw else {}
+            st.session_state._pw_variants = first.get("all_variants", []) if is_pw else []
             st.session_state.analysis_result = analyze_card(label, prices, details)
 
 # ── Analysis display ─────────────────────────────────────────────────────────────
@@ -576,6 +578,25 @@ if st.session_state.analysis_result:
           <div class="psa-grade" style="color:#22c55e;">NM MARKET PRICE</div>
           <div class="psa-price">{fmt_price(nm or r.get("average_price"))}</div>
         </div>""", unsafe_allow_html=True)
+
+        # All printing variants from the API
+        variants = st.session_state.get("_pw_variants", [])
+        if len(variants) > 1:
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("<p style='font-size:0.7rem;color:#9ca3af;margin-bottom:0.4rem;'>ALL VARIANTS (TCGPlayer)</p>", unsafe_allow_html=True)
+            for v in variants:
+                label = v.get("sub_type_name", "Normal")
+                mp    = v.get("market_price")
+                lo    = v.get("low_price")
+                hi    = v.get("high_price")
+                is_primary = label == st.session_state.get("_pw_prices", {}).get("sub_type_name") or (variants.index(v) == 0)
+                border = "#22c55e" if is_primary else "#2a2d45"
+                st.markdown(f"""
+                <div style="background:#161828;border:1px solid {border};border-radius:8px;padding:0.5rem 0.8rem;margin-bottom:0.4rem;display:flex;justify-content:space-between;align-items:center;">
+                  <span style="font-size:0.72rem;color:#9ca3af;">{label}</span>
+                  <span style="font-family:'Press Start 2P',monospace;font-size:0.8rem;color:#FFDE00;">{fmt_price(mp)}</span>
+                  <span style="font-size:0.68rem;color:#6b7280;">{fmt_price(lo)} – {fmt_price(hi)}</span>
+                </div>""", unsafe_allow_html=True)
 
     with info_col:
         # Name + types

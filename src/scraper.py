@@ -232,42 +232,60 @@ def get_pokewallet_prices(card_name: str) -> list[dict]:
     display_title = f"{card_info.get('name', name)} ({card_info.get('set_name', '')})"
     tcg_url       = tcg.get("url")
     today_str     = datetime.date.today().strftime("%b %d, %Y")
-    results       = []
 
-    # ── Step 4: use the real API price points directly ──────────────
-    # For each printing variant return the four real TCGPlayer price
-    # points (market, low, mid, high) so the analyzer works with
-    # actual data rather than random samples.
-    for variant in variants:
-        market = variant.get("market_price")
-        if not market:
-            continue
+    # ── Step 4: pick the primary variant ───────────────────────────
+    # 1st Edition, Shadowless, etc. have much higher prices than
+    # standard Unlimited/Holofoil copies. Mixing them produces
+    # meaningless averages, so we select one primary variant and
+    # expose the rest as metadata only.
+    _PREMIUM = {"1st edition", "shadowless"}
 
-        low      = variant.get("low_price")
-        mid      = variant.get("mid_price")
-        high     = variant.get("high_price")
-        sub_type = variant.get("sub_type_name", "Normal")
+    def _is_premium(sub_type: str) -> bool:
+        return any(k in sub_type.lower() for k in _PREMIUM)
 
-        # Build a list of the real values; duplicate market so we always
-        # have at least 5 entries for analyze_card's minimum threshold.
-        real_points = [p for p in [market, low, mid, high] if p]
-        while len(real_points) < 5:
-            real_points.append(market)
+    standard  = [v for v in variants if v.get("market_price") and not _is_premium(v.get("sub_type_name", ""))]
+    premium   = [v for v in variants if v.get("market_price") and     _is_premium(v.get("sub_type_name", ""))]
+    primary   = (standard or premium)[0]           # standard first, fall back to premium
+    all_variants = standard + premium              # standard listed before premium
 
-        for price in real_points:
-            results.append({
-                "title":        f"{display_title} [{sub_type}]",
-                "price":        f"${price:.2f}",
-                "date_sold":    today_str,
-                "source":       "pokewallet",
-                "url":          tcg_url,
-                "market_price": market,
-                "low_price":    low,
-                "mid_price":    mid,
-                "high_price":   high,
-                "sub_type_name": sub_type,
-                "sales_volume": None,
-            })
+    market   = primary["market_price"]
+    low      = primary.get("low_price")
+    mid      = primary.get("mid_price")
+    high     = primary.get("high_price")
+    sub_type = primary.get("sub_type_name", "Normal")
+
+    # Pass the four real price points to the analyzer unchanged.
+    # Pad to 5 entries (minimum for analyze_card) using market only.
+    real_points = [p for p in [market, low, mid, high] if p]
+    while len(real_points) < 5:
+        real_points.append(market)
+
+    results = []
+    for price in real_points:
+        results.append({
+            "title":         f"{display_title} [{sub_type}]",
+            "price":         f"${price:.2f}",
+            "date_sold":     today_str,
+            "source":        "pokewallet",
+            "url":           tcg_url,
+            "market_price":  market,
+            "low_price":     low,
+            "mid_price":     mid,
+            "high_price":    high,
+            "sub_type_name": sub_type,
+            # Pass all variants as metadata so the UI can display them
+            "all_variants":  [
+                {
+                    "sub_type_name": v.get("sub_type_name", "Normal"),
+                    "market_price":  v.get("market_price"),
+                    "low_price":     v.get("low_price"),
+                    "mid_price":     v.get("mid_price"),
+                    "high_price":    v.get("high_price"),
+                }
+                for v in all_variants
+            ],
+            "sales_volume":  None,
+        })
 
     return results
 
