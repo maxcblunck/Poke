@@ -195,13 +195,15 @@ def get_pokewallet_prices(card_name: str) -> list[dict]:
     name_lower = name.lower()
 
     def _score(c: dict) -> int:
-        cname = c.get("name", "").lower()
-        cset  = c.get("set_name", "").lower()
+        # Fields live under card_info in search results
+        info  = c.get("card_info") or c
+        cname = info.get("name", "").lower()
+        cset  = info.get("set_name", "").lower()
         s = 0
-        if cname == name_lower:          s += 10
+        if cname == name_lower:            s += 10
         elif cname.startswith(name_lower): s += 5
-        elif name_lower in cname:         s += 2
-        if set_hint and set_hint in cset: s += 8
+        elif name_lower in cname:          s += 2
+        if set_hint and set_hint in cset:  s += 8
         return s
 
     best = max(cards, key=_score)

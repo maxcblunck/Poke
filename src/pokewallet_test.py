@@ -82,44 +82,87 @@ def get_card(card_id: str) -> dict:
 
 
 def main():
-    query = "Charizard"
+    # Search specifically for base1-4 (Base Set Charizard card #4)
+    # The API uses set_id format — "base1 4" queries set code base1, card number 4
+    queries = ["base1 4", "Charizard base1"]
+    api_key = get_api_key()
+    headers = {"X-API-Key": api_key}
+    card_id = None
+
     print("=" * 60)
-    print(f"PokéWallet API test — searching for: {query!r}")
+    print("PokéWallet API test — Charizard base1-4")
     print("=" * 60 + "\n")
 
-    # ── Step 1: search ───────────────────────────────────────────
-    search_result = search_card(query, limit=5)
+    # ── Step 1: broad search, then scan all pages for Base Set ──────
+    print("Searching 'Charizard' across up to 3 pages (limit=20 each)…\n")
+    result = {}
+    for page in range(1, 4):
+        result = search_card("Charizard", page=page, limit=20)
+        cards = result.get("data") or result.get("results") or []
+        print(f"Page {page}: {len(cards)} result(s)")
 
-    print("\n── Raw search response ─────────────────────────────────")
-    print(json.dumps(search_result, indent=2))
+        # Dump the first raw card object on page 1 to reveal the schema
+        if cards and page == 1:
+            print("\n  --- First raw search result (full object) ---")
+            print("  " + json.dumps(cards[0], indent=4).replace("\n", "\n  "))
+            print()
 
-    # ── Step 2: fetch full details for the first result ──────────
-    cards = search_result.get("data") or search_result.get("results") or []
-    if not cards:
-        print("\nNo cards returned — check your API key and query.")
+        for c in cards:
+            # Fields nest under card_info in search results
+            info     = c.get("card_info") or c
+            name     = info.get("name", "")
+            set_name = info.get("set_name", "")
+            print(f"  -> {name!r:55s} set: {set_name!r}")
+            if "charizard" in name.lower() and "base set" in set_name.lower():
+                card_id = c.get("id")
+                print(f"  [MATCH] Matched Base Set Charizard")
+                break
+        if card_id:
+            break
+        total_pages = result.get("pagination", {}).get("total_pages", 1)
+        if page >= total_pages:
+            break
+        print()
+
+    if not card_id:
+        print("\nCould not find Base Set Charizard. Printing last search response:")
+        print(json.dumps(result, indent=2))
         return
 
-    first_id = cards[0].get("id")
-    if not first_id:
-        print("\nFirst result has no 'id' field — printing raw card:")
-        print(json.dumps(cards[0], indent=2))
-        return
+    # ── Step 2: full card detail ─────────────────────────────────
+    print(f"\n── Fetching full details for id: {card_id[:40]}… ──")
+    detail = get_card(card_id)
 
-    print(f"\n── Fetching full details for card id: {first_id} ──────")
-    card_detail = get_card(first_id)
+    print("\n── COMPLETE RAW RESPONSE (every field) ─────────────────")
+    print(json.dumps(detail, indent=2))
 
-    print("\n── Raw card detail response ────────────────────────────")
-    print(json.dumps(card_detail, indent=2))
+    # ── Step 3: field name summary ───────────────────────────────
+    print("\n── TOP-LEVEL FIELDS ────────────────────────────────────")
+    for k, v in detail.items():
+        preview = json.dumps(v)[:80].replace("\n", " ")
+        print(f"  {k:<20} : {preview}")
 
-    # ── Step 3: summary of pricing fields found ──────────────────
-    print("\n── Pricing field summary ───────────────────────────────")
-    for source in ("tcgplayer", "cardmarket"):
-        pricing = card_detail.get(source)
-        if pricing:
-            print(f"\n{source}:")
-            print(json.dumps(pricing, indent=2))
-        else:
-            print(f"\n{source}: not present in response")
+    print("\n── card_info FIELDS ────────────────────────────────────")
+    for k, v in (detail.get("card_info") or {}).items():
+        preview = json.dumps(v)[:80].replace("\n", " ")
+        print(f"  {k:<20} : {preview}")
+
+    print("\n── tcgplayer FIELDS ────────────────────────────────────")
+    tcg = detail.get("tcgplayer") or {}
+    for k, v in tcg.items():
+        if k != "prices":
+            print(f"  {k:<20} : {json.dumps(v)[:80]}")
+    for i, p in enumerate(tcg.get("prices") or []):
+        print(f"\n  prices[{i}]:")
+        for pk, pv in p.items():
+            print(f"    {pk:<22} : {pv}")
+
+    cardmarket = detail.get("cardmarket")
+    if cardmarket:
+        print("\n── cardmarket FIELDS ───────────────────────────────────")
+        print(json.dumps(cardmarket, indent=2))
+    else:
+        print("\n── cardmarket: not present ─────────────────────────────")
 
 
 if __name__ == "__main__":
