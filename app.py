@@ -387,8 +387,8 @@ with st.sidebar:
 # ── Hero ─────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="hero">
-  <p class="hero-title">🎴 POKÉVALUE</p>
-  <p class="hero-sub">Card valuation powered by scarcity, popularity & simulated market data</p>
+  <p class="hero-title">🎴 PokéValue</p>
+  <p class="hero-sub">Card Valuation Powered by Scarcity, Popularity & Simulated Market Data</p>
 </div>
 """, unsafe_allow_html=True)
 
