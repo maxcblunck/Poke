@@ -127,24 +127,34 @@ class CardDatabase:
 
         return results
 
-    def get_card_details(self, name: str, set_name: str) -> dict | None:
+    def get_card_details(
+        self, name: str, set_name: str, number: str | None = None
+    ) -> dict | None:
         """
-        Return the full card dict for a single card identified by its exact
-        name and set name (both case-insensitive).
+        Return the full card dict identified by name and set name
+        (both case-insensitive). When number is provided all three fields
+        must match, which disambiguates cards that share a name within a
+        set (e.g. Charizard ex Double Rare vs Special Illustration Rare).
+        Falls back to the first name+set match if number is given but not
+        found, so existing callers that omit number keep working.
 
-        Returns None if no match is found.
+        Returns None if no match is found at all.
         """
         name_lower = name.lower()
-        set_lower = set_name.lower()
+        set_lower  = set_name.lower()
+        fallback   = None
 
         for card in self._cards:
             if (
                 card.get("name", "").lower() == name_lower
                 and card.get("set_name", "").lower() == set_lower
             ):
-                return card
+                if number is None or str(card.get("number", "")) == str(number):
+                    return card
+                if fallback is None:
+                    fallback = card
 
-        return None
+        return fallback
 
 
 if __name__ == "__main__":

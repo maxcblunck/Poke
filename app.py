@@ -437,7 +437,7 @@ if pop_data:
         matches = db.search_card(name)
         img_url = None
         if matches:
-            details = db.get_card_details(matches[0]["name"], matches[0]["set_name"])
+            details = db.get_card_details(matches[0]["name"], matches[0]["set_name"], matches[0].get("number"))
             if details and details.get("images"):
                 img_url = details["images"].get("small")
 
@@ -527,7 +527,7 @@ if st.session_state.search_results:
     if st.button("ANALYSE CARD"):
         card      = st.session_state.selected_card
         label     = f"{card['name']} ({card['set_name']})"
-        details   = db.get_card_details(card["name"], card["set_name"])
+        details   = db.get_card_details(card["name"], card["set_name"], card.get("number"))
         with st.spinner("Crunching numbers…"):
             st.session_state.analysis_result = analyze_card(label, get_card_prices(label), details)
 
@@ -535,7 +535,7 @@ if st.session_state.search_results:
 if st.session_state.analysis_result:
     r       = st.session_state.analysis_result
     card    = st.session_state.selected_card
-    details = db.get_card_details(card["name"], card["set_name"]) if card else None
+    details = db.get_card_details(card["name"], card["set_name"], card.get("number")) if card else None
 
     st.markdown("---")
 
@@ -645,7 +645,7 @@ def run_scan(signal, rarities, sets, limit, highest_first):
     progress = st.progress(0, text="Starting…")
     for i, card in enumerate(pool):
         label   = f"{card['name']} ({card['set_name']})"
-        details = db.get_card_details(card["name"], card["set_name"])
+        details = db.get_card_details(card["name"], card["set_name"], card.get("number"))
         progress.progress((i + 1) / len(pool), text=f"{label}  ({i+1}/{len(pool)})")
         results.append(analyze_card(label, get_card_prices(label), details))
         if i < len(pool) - 1:
