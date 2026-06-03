@@ -272,29 +272,69 @@ def get_pokewallet_prices(card_name: str, card_local_id: str | None = None) -> l
     tcg_url       = tcg.get("url")
     today_str     = datetime.date.today().strftime("%b %d, %Y")
 
-    # ── Step 4: pick the primary variant ───────────────────────────
-    # 1st Edition, Shadowless, etc. have much higher prices than
-    # standard Unlimited/Holofoil copies. Mixing them produces
-    # meaningless averages, so we select one primary variant and
-    # expose the rest as metadata only.
-    _PREMIUM = {"1st edition", "shadowless"}
+    # ── Step 4: collect variants from ALL matching search results ───
+    # The Shadowless and 1st Edition copies are separate card entries
+    # in the API (e.g. "Base Set" vs "Base Set (Shadowless)"), so we
+    # harvest price rows from every same-name result and label them.
 
-    def _is_premium(sub_type: str) -> bool:
-        return any(k in sub_type.lower() for k in _PREMIUM)
+    def _variant_label(set_name: str, sub_type: str) -> str:
+        sn = set_name.lower()
+        st = sub_type.lower()
+        if "shadowless" in sn and "1st edition" in st:
+            return "1st Edition Shadowless"
+        if "shadowless" in sn:
+            return "Shadowless"
+        if "1st edition" in st:
+            return "1st Edition"
+        # For modern cards keep the API label (e.g. "Holofoil", "Reverse Holofoil")
+        return sub_type
 
-    standard  = [v for v in variants if v.get("market_price") and not _is_premium(v.get("sub_type_name", ""))]
-    premium   = [v for v in variants if v.get("market_price") and     _is_premium(v.get("sub_type_name", ""))]
-    primary   = (standard or premium)[0]           # standard first, fall back to premium
-    all_variants = standard + premium              # standard listed before premium
+    def _variant_sort_key(v: dict) -> int:
+        label = v["sub_type_name"].lower()
+        if "1st edition shadowless" in label: return 3
+        if "1st edition" in label:            return 2
+        if "shadowless" in label:             return 1
+        return 0
 
+    seen_labels: set = set()
+    all_variants: list = []
+
+    for c in sorted(cards, key=_score, reverse=True):
+        info_c = c.get("card_info") or c
+        # Only collect from results that match the same Pokemon name exactly
+        if info_c.get("name", "").lower() != name_lower:
+            continue
+        cset      = info_c.get("set_name", "")
+        prices_c  = (c.get("tcgplayer") or {}).get("prices") or []
+        for v in prices_c:
+            mp = v.get("market_price")
+            if not mp:
+                continue
+            label = _variant_label(cset, v.get("sub_type_name", "Normal"))
+            if label in seen_labels:
+                continue
+            seen_labels.add(label)
+            all_variants.append({
+                "sub_type_name": label,
+                "market_price":  mp,
+                "low_price":     v.get("low_price"),
+                "mid_price":     v.get("mid_price"),
+                "high_price":    v.get("high_price"),
+            })
+
+    all_variants.sort(key=_variant_sort_key)
+
+    if not all_variants:
+        return []
+
+    # Primary = first standard (Unlimited) variant
+    primary  = all_variants[0]
     market   = primary["market_price"]
     low      = primary.get("low_price")
     mid      = primary.get("mid_price")
     high     = primary.get("high_price")
-    sub_type = primary.get("sub_type_name", "Normal")
+    sub_type = primary["sub_type_name"]
 
-    # Pass the four real price points to the analyzer unchanged.
-    # Pad to 5 entries (minimum for analyze_card) using market only.
     real_points = [p for p in [market, low, mid, high] if p]
     while len(real_points) < 5:
         real_points.append(market)
@@ -312,17 +352,7 @@ def get_pokewallet_prices(card_name: str, card_local_id: str | None = None) -> l
             "mid_price":     mid,
             "high_price":    high,
             "sub_type_name": sub_type,
-            # Pass all variants as metadata so the UI can display them
-            "all_variants":  [
-                {
-                    "sub_type_name": v.get("sub_type_name", "Normal"),
-                    "market_price":  v.get("market_price"),
-                    "low_price":     v.get("low_price"),
-                    "mid_price":     v.get("mid_price"),
-                    "high_price":    v.get("high_price"),
-                }
-                for v in all_variants
-            ],
+            "all_variants":  all_variants,
             "sales_volume":  None,
         })
 
