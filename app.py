@@ -192,6 +192,17 @@ p, span, div, label { font-family: 'Inter', sans-serif !important; }
     color: #FFDE00;
 }
 
+/* ── Streamlit metric value colour override ── */
+[data-testid="stMetricValue"] {
+    color: #FFDE00 !important;
+    font-family: 'Press Start 2P', monospace !important;
+    font-size: 0.85rem !important;
+}
+[data-testid="stMetricLabel"] {
+    color: #9ca3af !important;
+    font-size: 0.72rem !important;
+}
+
 /* ── Pop card (popularity dashboard) ── */
 .pop-card {
     background: #161828;
@@ -480,7 +491,7 @@ for col, val, lbl in [
 st.markdown("---")
 
 # ── Session state ────────────────────────────────────────────────────────────────
-for key, default in [("search_results", []), ("selected_card", None), ("analysis_result", None)]:
+for key, default in [("search_results", []), ("selected_card", None), ("analysis_result", None), ("nm_market_price", None)]:
     if key not in st.session_state:
         st.session_state[key] = default
 
@@ -529,7 +540,9 @@ if st.session_state.search_results:
         label     = f"{card['name']} ({card['set_name']})"
         details   = db.get_card_details(card["name"], card["set_name"], card.get("number"))
         with st.spinner("Crunching numbers…"):
-            st.session_state.analysis_result = analyze_card(label, get_card_prices(label), details)
+            prices = get_card_prices(label)
+            st.session_state.nm_market_price = prices[0].get("market_price") if prices else None
+            st.session_state.analysis_result = analyze_card(label, prices, details)
 
 # ── Analysis display ─────────────────────────────────────────────────────────────
 if st.session_state.analysis_result:
@@ -548,27 +561,33 @@ if st.session_state.analysis_result:
         else:
             st.markdown("<div style='background:#1e2035;border-radius:12px;height:340px;display:flex;align-items:center;justify-content:center;font-size:3rem;'>🃏</div>", unsafe_allow_html=True)
 
-        # PSA graded prices below image
+        # Price boxes: NM Market Price + PSA grades
         p9  = r.get("psa9_price")
         p10 = r.get("psa10_price")
-        if p9 and p10:
-            st.markdown("<br>", unsafe_allow_html=True)
-            g1, g2 = st.columns(2)
-            with g1:
-                st.markdown(f"""
-                <div class="psa-box">
-                  <div class="psa-grade">PSA 9</div>
-                  <div class="psa-price">{fmt_price(p9)}</div>
-                </div>""", unsafe_allow_html=True)
-            with g2:
-                st.markdown(f"""
-                <div class="psa-box">
-                  <div class="psa-grade">PSA 10</div>
-                  <div class="psa-price">{fmt_price(p10)}</div>
-                </div>""", unsafe_allow_html=True)
-            prem = r.get("grade_premium_pct")
-            if prem:
-                st.markdown(f"<p style='text-align:center;color:#a78bfa;font-size:0.75rem;margin-top:0.4rem;'>+{prem:,.0f}% grading premium</p>", unsafe_allow_html=True)
+        nm  = st.session_state.get("nm_market_price")
+        st.markdown("<br>", unsafe_allow_html=True)
+        g_nm, g1, g2 = st.columns(3)
+        with g_nm:
+            st.markdown(f"""
+            <div class="psa-box" style="border-color:#22c55e;">
+              <div class="psa-grade" style="color:#22c55e;">RAW NM</div>
+              <div class="psa-price">{fmt_price(nm or r.get("average_price"))}</div>
+            </div>""", unsafe_allow_html=True)
+        with g1:
+            st.markdown(f"""
+            <div class="psa-box">
+              <div class="psa-grade">PSA 9</div>
+              <div class="psa-price">{fmt_price(p9)}</div>
+            </div>""", unsafe_allow_html=True)
+        with g2:
+            st.markdown(f"""
+            <div class="psa-box">
+              <div class="psa-grade">PSA 10</div>
+              <div class="psa-price">{fmt_price(p10)}</div>
+            </div>""", unsafe_allow_html=True)
+        prem = r.get("grade_premium_pct")
+        if prem:
+            st.markdown(f"<p style='text-align:center;color:#a78bfa;font-size:0.75rem;margin-top:0.4rem;'>+{prem:,.0f}% grading premium</p>", unsafe_allow_html=True)
 
     with info_col:
         # Name + types
