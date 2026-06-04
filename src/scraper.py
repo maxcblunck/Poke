@@ -94,6 +94,10 @@ def _api_set_id_for(local_id: str) -> str | None:
         "xy10":  "1780",   # Fates Collide
         "xy11":  "1815",   # Steam Siege
         "xy12":  "1842",   # Evolutions
+        # Celebrations (2021) — "celebrations" is penalised in scoring
+        # unless the target set_id is explicitly set here
+        "cel25":  "2867",  # Celebrations
+        "cel25c": "2931",  # Celebrations: Classic Collection
         # Sun & Moon era (2017-2019) — count ambiguous due to secrets
         "sm3":   "1957",   # Burning Shadows
         "sm2":   "1919",   # Guardians Rising
@@ -334,14 +338,20 @@ def get_pokewallet_prices(card_name: str, card_local_id: str | None = None) -> l
     name     = m.group(1).strip() if m else card_name
     set_hint = m.group(2).strip().lower() if m else None
 
-    # ── Step 1: search — try progressively looser queries ──────────
-    # 1st try: "Charizard 4/102"  — precise fraction (best for vintage sets)
-    # 2nd try: "Charizard 4"      — raw number only  (for modern sets where
-    #          the API total differs from our local DB total)
-    # 3rd try: "Charizard"        — name only fallback
+    # Compute set lookup values once — used by both query building and scoring
     fraction   = _format_card_number(card_local_id) if card_local_id else None
     raw_number = card_local_id.rsplit("-", 1)[-1] if card_local_id else None
+    if raw_number:
+        # Strip non-numeric suffixes like "_A" from ids such as "cel25c-66_A"
+        raw_number = re.sub(r"[^0-9].*$", "", raw_number) or raw_number
     api_set_id = _api_set_id_for(card_local_id) if card_local_id else None
+
+    # Skip fraction when card number exceeds the set total (e.g. cel25c has 25
+    # cards but Shining Magikarp keeps its original #66 from Neo Revelation).
+    if fraction and raw_number and raw_number.isdigit():
+        num, _, total = fraction.partition("/")
+        if total.isdigit() and int(raw_number) > int(total):
+            fraction = None
 
     queries: list[str] = []
     if fraction:
@@ -377,19 +387,24 @@ def get_pokewallet_prices(card_name: str, card_local_id: str | None = None) -> l
     name_lower = name.lower()
 
     def _score(c: dict) -> int:
-        info  = c.get("card_info") or c
-        cname = info.get("name", "").lower()
-        cset  = info.get("set_name", "").lower()
+        info      = c.get("card_info") or c
+        cname     = info.get("name", "").lower()
+        cset      = info.get("set_name", "").lower()
+        cset_id   = str(info.get("set_id", ""))
         s = 0
         if cname == name_lower:            s += 10
         elif cname.startswith(name_lower): s += 5
         elif name_lower in cname:          s += 2
         if set_hint and set_hint in cset:  s += 8
-        # Penalise premium/variant pressings so plain Unlimited beats
-        # Shadowless, 1st Edition, Error, Promo, Jumbo, Metal etc.
+        # Strong boost when this card is from the exact target set
+        if api_set_id and cset_id == api_set_id:
+            s += 15
+        # Penalise premium/variant pressings — but NOT when this IS the target set
         _PENALTY = ["shadowless", "1st edition", "error", "promo",
                     "jumbo", "metal", "classic collection", "celebrations"]
-        if any(p in cset for p in _PENALTY):
+        is_target = (api_set_id and cset_id == api_set_id) or \
+                    (set_hint and set_hint in cset)
+        if not is_target and any(p in cset for p in _PENALTY):
             s -= 6
         return s
 
