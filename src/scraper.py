@@ -734,27 +734,36 @@ def _poketrace_find_card(card_name: str, card_local_id: str | None) -> str | Non
         if m:
             card_number = m.group(1)
 
-    def _search(params: dict) -> str | None:
-        try:
-            r = requests.get(
-                f"{POKETRACE_BASE_URL}/cards",
-                headers={"X-API-Key": key},
-                params=params,
-                timeout=10,
-            )
-            if r.status_code != 200:
-                return None
-            items = r.json().get("data", [])
-            return items[0]["id"] if items else None
-        except Exception:
+    try:
+        r = requests.get(
+            f"{POKETRACE_BASE_URL}/cards",
+            headers={"X-API-Key": key},
+            params={"search": search_name, "limit": 20},
+            timeout=10,
+        )
+        if r.status_code != 200:
+            _poketrace_id_cache[cache_key] = None
             return None
+        items = r.json().get("data", [])
+    except Exception:
+        _poketrace_id_cache[cache_key] = None
+        return None
 
-    # Try name + number first, then name only
+    if not items:
+        _poketrace_id_cache[cache_key] = None
+        return None
+
+    # Prefer the entry whose cardNumber starts with our target number
+    # e.g. card_number="125" matches "125/094"
     uid = None
     if card_number:
-        uid = _search({"search": search_name, "card_number": card_number, "limit": 5})
+        for item in items:
+            cn = item.get("cardNumber") or ""
+            if cn.startswith(card_number + "/") or cn == card_number:
+                uid = item["id"]
+                break
     if not uid:
-        uid = _search({"search": search_name, "limit": 10})
+        uid = items[0]["id"]
 
     _poketrace_id_cache[cache_key] = uid
     return uid
@@ -771,17 +780,25 @@ def get_poketrace_history(card_name: str, card_local_id: str | None = None) -> l
         return []
 
     key = _poketrace_api_key()
-    try:
-        r = requests.get(
-            f"{POKETRACE_BASE_URL}/cards/{uid}/prices/NEAR_MINT/history",
-            headers={"X-API-Key": key},
-            params={"period": "90d", "limit": 50},
-            timeout=10,
-        )
-        if r.status_code != 200:
+    import time as _time
+    for _attempt in range(3):
+        try:
+            r = requests.get(
+                f"{POKETRACE_BASE_URL}/cards/{uid}/prices/NEAR_MINT/history",
+                headers={"X-API-Key": key},
+                params={"period": "90d", "limit": 50},
+                timeout=10,
+            )
+            if r.status_code == 429:
+                _time.sleep(2)
+                continue
+            if r.status_code != 200:
+                return []
+            entries = r.json().get("data", [])
+            break
+        except Exception:
             return []
-        entries = r.json().get("data", [])
-    except Exception:
+    else:
         return []
 
     results = []
