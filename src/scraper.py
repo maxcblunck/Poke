@@ -6,7 +6,14 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlencode
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"), override=False)
+except ImportError:
+    pass
+
 POKEWALLET_BASE_URL = "https://api.pokewallet.io"
+POKEWALLET_API_KEY  = os.getenv("POKEWALLET_API_KEY", "")
 
 # Module-level cache so CardDatabase is only loaded once across all calls
 _db = None
@@ -168,14 +175,8 @@ def get_ebay_sold_prices(card_name: str) -> list[dict]:
 
 
 def _pokewallet_api_key() -> str:
-    """Load API key from .env or environment. Returns empty string if absent."""
-    try:
-        from dotenv import load_dotenv
-        env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
-        load_dotenv(env_path, override=False)
-    except ImportError:
-        pass
-    return os.environ.get("POKEWALLET_API_KEY", "")
+    """Return the PokéWallet API key, preferring the module-level variable."""
+    return POKEWALLET_API_KEY or os.environ.get("POKEWALLET_API_KEY", "")
 
 
 def get_pokewallet_prices(card_name: str, card_local_id: str | None = None) -> list[dict]:
@@ -378,6 +379,8 @@ def get_card_prices(card_name: str, card_local_id: str | None = None) -> list[di
         pw = []
 
     if len(pw) >= 5:
+        for entry in pw:
+            entry["data_source"] = "live"
         return pw
 
     # 2. eBay
@@ -393,6 +396,7 @@ def get_card_prices(card_name: str, card_local_id: str | None = None) -> list[di
                 "price":        r["price"],
                 "date_sold":    r["date_sold"],
                 "source":       "ebay",
+                "data_source":  "live",
                 "sales_volume": None,
             }
             for r in ebay
@@ -413,6 +417,7 @@ def get_card_prices(card_name: str, card_local_id: str | None = None) -> list[di
             "price":        f"${price:.2f}",
             "date_sold":    date_sold,
             "source":       "simulated",
+            "data_source":  "simulated",
             "sales_volume": None,
         })
 

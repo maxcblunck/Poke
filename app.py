@@ -491,7 +491,7 @@ for col, val, lbl in [
 st.markdown("---")
 
 # ── Session state ────────────────────────────────────────────────────────────────
-for key, default in [("search_results", []), ("selected_card", None), ("analysis_result", None), ("nm_market_price", None), ("_pw_prices", {}), ("_pw_variants", []), ("_variant_idx", 0)]:
+for key, default in [("search_results", []), ("selected_card", None), ("analysis_result", None), ("nm_market_price", None), ("_pw_prices", {}), ("_pw_variants", []), ("_variant_idx", 0), ("data_source", "simulated")]:
     if key not in st.session_state:
         st.session_state[key] = default
 
@@ -552,6 +552,7 @@ if st.session_state.search_results:
             } if is_pw else {}
             st.session_state._pw_variants = first.get("all_variants", []) if is_pw else []
             st.session_state._variant_idx  = 0
+            st.session_state.data_source   = first.get("data_source", "simulated")
             st.session_state.analysis_result = analyze_card(label, prices, details)
 
 # ── Analysis display ─────────────────────────────────────────────────────────────
@@ -616,6 +617,15 @@ if st.session_state.analysis_result:
         <p style='color:#9ca3af;font-size:0.85rem;margin-bottom:0.6rem;'>{set_name} · {rarity}</p>
         {types_html}
         """, unsafe_allow_html=True)
+
+        # Data source badge
+        ds = st.session_state.get("data_source", "simulated")
+        if ds == "live":
+            ds_badge = "<span style='background:#14532d;color:#86efac;border:1px solid #22c55e;border-radius:4px;font-family:Inter,sans-serif;font-size:0.72rem;padding:2px 10px;'>&#9679; Live TCGPlayer Data</span>"
+        else:
+            ds_badge = "<span style='background:#1f2937;color:#9ca3af;border:1px solid #374151;border-radius:4px;font-family:Inter,sans-serif;font-size:0.72rem;padding:2px 10px;'>&#9679; Simulated Estimate</span>"
+        st.markdown(ds_badge, unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
 
         # Recommendation badge
         st.markdown(rec_badge(r.get("recommendation", "N/A")), unsafe_allow_html=True)
