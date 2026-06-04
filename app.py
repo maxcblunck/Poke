@@ -458,11 +458,11 @@ with st.sidebar:
     st.markdown("---")
     _pw_key = os.environ.get("POKEWALLET_API_KEY", "")
     if _pw_key.startswith("pk_live_"):
-        st.markdown("<p style='font-size:0.7rem;color:#22c55e;'>&#9679; API Connected (live)</p>", unsafe_allow_html=True)
+        st.markdown("<span style='font-size:0.7rem;color:#22c55e !important;background:#14532d;padding:2px 8px;border-radius:4px;'>&#9679; API Live</span>", unsafe_allow_html=True)
     elif _pw_key.startswith("pk_test_"):
-        st.markdown("<p style='font-size:0.7rem;color:#eab308;'>&#9679; API Test Key</p>", unsafe_allow_html=True)
+        st.markdown("<span style='font-size:0.7rem;color:#000 !important;background:#eab308;padding:2px 8px;border-radius:4px;'>&#9679; Test Key — limited</span>", unsafe_allow_html=True)
     else:
-        st.markdown("<p style='font-size:0.7rem;color:#ef4444;'>&#9679; No API Key — simulated</p>", unsafe_allow_html=True)
+        st.markdown("<span style='font-size:0.7rem;color:#fff !important;background:#ef4444;padding:2px 8px;border-radius:4px;'>&#9679; No API Key</span>", unsafe_allow_html=True)
 
 # ── Hero ─────────────────────────────────────────────────────────────────────────
 st.markdown("""
