@@ -1,6 +1,5 @@
 import os
 import time
-import csv
 import base64
 import streamlit as st
 
@@ -18,6 +17,7 @@ except Exception:
 from src.card_db import CardDatabase
 from src.scraper import get_card_prices
 from src.analyzer import analyze_card
+from src.pokemon_popularity import POPULARITY_SCORES
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -512,12 +512,11 @@ def load_database():
 
 @st.cache_data
 def load_popularity():
-    path = os.path.join("data", "popularity.csv")
-    rows = []
-    if os.path.exists(path):
-        with open(path, newline="", encoding="utf-8") as f:
-            rows = list(csv.DictReader(f))
-    return sorted(rows, key=lambda r: float(r["score"]), reverse=True)
+    return sorted(
+        [{"name": k, "score": v} for k, v in POPULARITY_SCORES.items()],
+        key=lambda r: r["score"],
+        reverse=True,
+    )
 
 
 @st.cache_data
@@ -559,38 +558,38 @@ pop_data = load_popularity()
 
 if pop_data:
     st.markdown("## 🌟 POPULARITY RANKINGS")
-    st.markdown("<p style='color:#9ca3af;margin-bottom:1rem;'>12-month Google Trends interest · anchored to Pikachu baseline</p>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#9ca3af;margin-bottom:1rem;'>Fan sentiment scores across all 1025 Pokémon · community polls &amp; cultural impact</p>", unsafe_allow_html=True)
 
-    top = pop_data[:10]
-    cols = st.columns(len(top))
+    top = pop_data[:20]
 
-    for col, row in zip(cols, top):
-        name  = row["name"]
-        score = float(row["score"])
-        # Try to find a card image for this Pokemon
-        matches = db.search_card(name)
-        img_url = None
-        if matches:
-            details = db.get_card_details(matches[0]["name"], matches[0]["set_name"], matches[0].get("number"))
-            if details and details.get("images"):
-                img_url = details["images"].get("small")
+    def _render_pop_row(entries):
+        cols = st.columns(len(entries))
+        for col, row in zip(cols, entries):
+            name  = row["name"]
+            score = float(row["score"])
+            matches = db.search_card(name)
+            img_url = None
+            if matches:
+                det = db.get_card_details(matches[0]["name"], matches[0]["set_name"], matches[0].get("number"))
+                if det and det.get("images"):
+                    img_url = det["images"].get("small")
+            bar_color = "#FFDE00" if score >= 75 else ("#f97316" if score >= 55 else "#9ca3af")
+            with col:
+                if img_url:
+                    st.image(img_url, use_container_width=True)
+                else:
+                    st.markdown("<div style='height:80px;background:#1e2035;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;'>?</div>", unsafe_allow_html=True)
+                st.markdown(f"""
+                <div class='pop-name'>{name.upper()}</div>
+                <div style='background:#1e2035;border-radius:4px;height:6px;margin:4px 0;'>
+                  <div style='width:{score:.0f}%;height:100%;background:{bar_color};border-radius:4px;'></div>
+                </div>
+                <div class='pop-score'>{score:.0f} / 100</div>
+                """, unsafe_allow_html=True)
 
-        with col:
-            if img_url:
-                st.image(img_url, use_container_width=True)
-            else:
-                st.markdown(f"<div style='height:80px;background:#1e2035;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;'>?</div>", unsafe_allow_html=True)
-            # Popularity bar
-            bar_pct = score / 100 * 100
-            bar_color = "#FFDE00" if score >= 40 else ("#f97316" if score >= 15 else "#6b7280")
-            st.markdown(f"""
-            <div class='pop-name'>{name.upper()}</div>
-            <div style='background:#1e2035;border-radius:4px;height:6px;margin:4px 0;'>
-              <div style='width:{bar_pct:.0f}%;height:100%;background:{bar_color};border-radius:4px;'></div>
-            </div>
-            <div class='pop-score'>{score:.1f} / 100</div>
-            """, unsafe_allow_html=True)
-
+    _render_pop_row(top[:10])
+    st.markdown("<div style='margin:0.6rem 0;'></div>", unsafe_allow_html=True)
+    _render_pop_row(top[10:])
     st.markdown("---")
 
 # ── Quick stats row ──────────────────────────────────────────────────────────────
@@ -603,7 +602,7 @@ for col, val, lbl in [
     (c1, f"{len(all_cards):,}" if all_cards else "—", "CARDS IN DB"),
     (c2, str(total_sets),                              "SETS"),
     (c3, str(rare_count),                              "RARE+ CARDS"),
-    (c4, str(len(pop_data)),                           "TRACKED SPECIES"),
+    (c4, str(len(POPULARITY_SCORES)),                   "TRACKED SPECIES"),
 ]:
     col.markdown(f"""
     <div class="stat-box">
