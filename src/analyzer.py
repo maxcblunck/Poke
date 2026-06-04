@@ -161,6 +161,15 @@ _SET_PULL_RATES: dict[str, dict[str, float]] = {
         "Double Rare": 4.9,  "Rare Holo": 1.4,
     },
     # ── Sword & Shield era ───────────────────────────────────────────
+    # ── Mega Evolution sets ───────────────────────────────────────────
+    "me2": {   # Phantasmal Flames (Nov 2025) — rates from TCGplayer 5,000-pack sample
+        "Double Rare":                5.0,   # 1/5
+        "Illustration Rare":          9.0,   # 1/9
+        "Ultra Rare":                12.0,   # 1/12
+        "Special Illustration Rare": 80.0,   # 1/80  → 5 SIRs = 400 packs each
+        "Mega Hyper Rare":         1260.0,   # 1/1260 → 1 MHR = 1,260 packs
+    },
+    # ── Sword & Shield era ───────────────────────────────────────────
     "swsh1": {
         "Rare Secret": 109.9, "Rare Rainbow": 81.3,
         "Ultra Rare": 26.7,   "Rare Holo VMAX": 45.5,
@@ -247,6 +256,7 @@ _ERA_PULL_RATES: dict[tuple, float] = {
     ("recent",    "Rare Rainbow"):          80.0,
     ("recent",    "Rare Secret"):          120.0,
     ("recent",    "Trainer Gallery Rare Holo"): 18.0,
+    ("recent",    "Mega Hyper Rare"):         1260.0,
 }
 _PULL_RATE_DEFAULT = 6.0
 
