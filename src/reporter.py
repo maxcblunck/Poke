@@ -122,7 +122,7 @@ def print_report(analysis_dict: dict) -> None:
     print("=" * width)
     print(f"  {card_name}")
     print("=" * width)
-    print(f"  Sales analysed : {num_sales}")
+    print(f"  Sales analyzed : {num_sales}")
     print(f"  Average price  : {_fmt_price(average_price)}")
     print(f"  Median price   : {_fmt_price(median_price)}")
     print(f"  Lowest / High  : {_fmt_price(lowest_price)} / {_fmt_price(highest_price)}")

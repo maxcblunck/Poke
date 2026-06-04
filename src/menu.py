@@ -89,7 +89,7 @@ class Menu:
 
         # Ask the user to pick one entry from the list
         try:
-            pick = int(input("\nEnter number to analyse (0 to cancel): "))
+            pick = int(input("\nEnter number to analyze (0 to cancel): "))
         except ValueError:
             print("Invalid input.")
             return
@@ -105,14 +105,14 @@ class Menu:
         card_label = f"{chosen['name']} ({chosen['set_name']})"
         print(f"\nFetching prices for: {card_label}")
 
-        # Fetch, analyse, and report for the chosen card
+        # Fetch, analyze, and report for the chosen card
         prices = self.get_card_prices(card_label)
         analysis = self.analyze_card(card_label, prices)
         self.print_report(analysis)
 
     def _scan_rare_cards(self, target_signal: str):
         """
-        Options 2 & 3: fetch the top 20 rare holo cards, analyse each one,
+        Options 2 & 3: fetch the top 20 rare holo cards, analyze each one,
         and list only those whose value_signal matches target_signal.
 
         A 1-second delay is inserted between each lookup so we don't

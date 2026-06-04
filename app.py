@@ -24,7 +24,7 @@ from src.pokemon_popularity import POPULARITY_SCORES
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="PokéValue — Pokémon Card Analyser",
+    page_title="PokéValue — Pokémon Card Analyzer",
     page_icon="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/144.png",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -660,7 +660,7 @@ if st.session_state.search_results:
     )
     st.session_state.selected_card = matches[chosen_idx]
 
-    if st.button("ANALYSE CARD"):
+    if st.button("ANALYZE CARD"):
         card      = st.session_state.selected_card
         label     = f"{card['name']} ({card['set_name']})"
         details   = db.get_card_details(card["name"], card["set_name"], card.get("number"))
