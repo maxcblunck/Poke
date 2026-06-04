@@ -18,21 +18,36 @@ import re
 # 1. Base price by rarity tier
 # ---------------------------------------------------------------------------
 BASE_PRICES: dict[str, float] = {
+    # Standard
     "Common":                     0.25,
     "Uncommon":                   0.75,
     "Rare":                       3.00,
     "Rare Holo":                  8.00,
+    # Modern V/VMAX/GX/EX holos
+    "Rare Holo V":               10.00,
+    "Rare Holo VMAX":            18.00,
+    "Rare Holo VSTAR":           15.00,
+    "Rare Holo GX":               8.00,
+    "Rare Holo EX":               8.00,
     "Double Rare":               15.00,
+    "ACE SPEC Rare":             35.00,
+    # Full arts / ultra rares
+    "Rare Ultra":                30.00,
     "Ultra Rare":                25.00,
     "Illustration Rare":         20.00,
-    "Special Illustration Rare": 60.00,
-    "Hyper Rare":                45.00,
-    "Rare Ultra":                30.00,
-    "Rare Secret":               75.00,
-    "Rare Rainbow":              50.00,
-    "ACE SPEC Rare":             35.00,
+    # Secret / rainbow / alt arts — priced conservatively;
+    # real prices vary hugely by Pokemon popularity.
+    # The popularity multiplier in valuate_card() pushes these up.
+    "Rare Rainbow":              60.00,   # rainbow secret rares (SWSH era)
+    "Rare Secret":               75.00,   # gold secret rares
+    "Special Illustration Rare": 80.00,   # alt arts (SV era)
+    "Hyper Rare":                55.00,   # gold full arts (SV era)
+    # Trainer Gallery / Shiny
+    "Trainer Gallery Rare Holo": 20.00,
+    "Rare Shiny":                30.00,
+    "Rare Shiny GX":             50.00,
 }
-DEFAULT_BASE_PRICE = 1.00
+DEFAULT_BASE_PRICE = 2.00  # unknown rarity — at least worth more than $1
 
 # ---------------------------------------------------------------------------
 # 2. Character popularity tiers (checked via case-insensitive substring match)

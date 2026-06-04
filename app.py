@@ -319,6 +319,30 @@ TYPE_COLORS = {
 
 # ── Helpers ─────────────────────────────────────────────────────────────────────
 
+_RARITY_DISPLAY: dict[str, str] = {
+    "Rare Rainbow":              "Rainbow Rare (Secret)",
+    "Rare Secret":               "Gold Secret Rare",
+    "Rare Ultra":                "Full Art / Alt Art",
+    "Ultra Rare":                "Ultra Rare",
+    "Special Illustration Rare": "Special Illustration Rare (Alt Art)",
+    "Hyper Rare":                "Hyper Rare (Gold)",
+    "Rare Shiny":                "Shiny Rare",
+    "Rare Shiny GX":             "Shiny GX Secret",
+    "Trainer Gallery Rare Holo": "Trainer Gallery",
+    "Rare Holo VMAX":            "Rare Holo VMAX",
+    "Rare Holo VSTAR":           "Rare Holo VSTAR",
+    "Rare Holo V":               "Rare Holo V",
+    "Rare Holo GX":              "Rare Holo GX",
+    "Rare Holo EX":              "Rare Holo EX",
+    "Double Rare":               "Double Rare (ex)",
+    "ACE SPEC Rare":             "ACE SPEC Rare",
+}
+
+
+def display_rarity(rarity: str) -> str:
+    return _RARITY_DISPLAY.get(rarity, rarity)
+
+
 def fmt_price(v) -> str:
     return f"${v:,.2f}" if v is not None else "N/A"
 
@@ -614,7 +638,7 @@ if st.session_state.analysis_result:
         set_name   = card.get("set_name", "") if card else ""
         st.markdown(f"""
         <h2 style='margin-bottom:0.3rem;'>{r['card_name']}</h2>
-        <p style='color:#9ca3af;font-size:0.85rem;margin-bottom:0.6rem;'>{set_name} · {rarity}</p>
+        <p style='color:#9ca3af;font-size:0.85rem;margin-bottom:0.6rem;'>{set_name} · {display_rarity(rarity)}</p>
         {types_html}
         """, unsafe_allow_html=True)
 

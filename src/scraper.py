@@ -50,10 +50,11 @@ def _format_card_number(local_id: str) -> str | None:
     return f"{num}/{total}" if total else None
 
 
-def _get_base_price(card_name: str) -> float:
+def _get_base_price(card_name: str, card_local_id: str | None = None) -> float:
     """
-    Look up the card in CardDatabase and return a valuated simulated price.
-    Falls back to a length-seeded random price if the card isn't found.
+    Look up the exact card in CardDatabase and return its valuated price.
+    Uses card_local_id (e.g. 'swsh6-201') for an exact match when provided,
+    falling back to name+set filtering, then a seeded random price.
     """
     try:
         db = _load_db()
@@ -63,7 +64,13 @@ def _get_base_price(card_name: str) -> float:
     except Exception:
         return random.Random(card_name).uniform(5.0, 500.0)
 
-    # card_name may be "Charizard (Base Set)" — parse name and set
+    # Fast path: exact match by local DB id
+    if card_local_id:
+        exact = next((c for c in db._cards if c.get("id") == card_local_id), None)
+        if exact:
+            return valuate_card(exact)["simulated_price"]
+
+    # Slow path: name + set_name filter
     m = re.match(r"^(.*?)\s*\(([^)]+)\)\s*$", card_name)
     name     = m.group(1).strip() if m else card_name
     set_hint = m.group(2).strip() if m else None
@@ -403,7 +410,7 @@ def get_card_prices(card_name: str, card_local_id: str | None = None) -> list[di
         ]
 
     # 3. Simulated fallback
-    base_price = _get_base_price(card_name)
+    base_price = _get_base_price(card_name, card_local_id)
     rng        = random.Random(card_name)
     today      = datetime.date.today()
     results    = []
