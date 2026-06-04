@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import random
@@ -12,8 +13,130 @@ try:
 except ImportError:
     pass
 
-POKEWALLET_BASE_URL = "https://api.pokewallet.io"
-POKEWALLET_API_KEY  = os.getenv("POKEWALLET_API_KEY", "")
+POKEWALLET_BASE_URL  = "https://api.pokewallet.io"
+POKEWALLET_API_KEY   = os.getenv("POKEWALLET_API_KEY", "")
+_SETS_CACHE_PATH     = os.path.join(os.path.dirname(__file__), "..", "data", "pokewallet_sets.json")
+_sets_cache: list | None = None
+
+
+def _get_pokewallet_sets() -> list:
+    """
+    Return the PokéWallet sets list, loading from disk cache if available,
+    otherwise fetching from the API and saving to disk for future calls.
+    The cache avoids burning API quota on every card lookup.
+    """
+    global _sets_cache
+    if _sets_cache is not None:
+        return _sets_cache
+
+    if os.path.exists(_SETS_CACHE_PATH):
+        try:
+            with open(_SETS_CACHE_PATH, encoding="utf-8") as f:
+                _sets_cache = json.load(f)
+                return _sets_cache
+        except Exception:
+            pass
+
+    api_key = POKEWALLET_API_KEY or os.environ.get("POKEWALLET_API_KEY", "")
+    if not api_key:
+        return []
+    try:
+        resp = requests.get(
+            f"{POKEWALLET_BASE_URL}/sets",
+            headers={"X-API-Key": api_key},
+            timeout=30,
+        )
+        if resp.status_code == 200:
+            _sets_cache = resp.json().get("data", [])
+            os.makedirs(os.path.dirname(os.path.abspath(_SETS_CACHE_PATH)), exist_ok=True)
+            with open(_SETS_CACHE_PATH, "w", encoding="utf-8") as f:
+                json.dump(_sets_cache, f)
+            return _sets_cache
+    except Exception:
+        pass
+    return []
+
+
+def _api_set_id_for(local_id: str) -> str | None:
+    """
+    Map a local card id like 'hgss1-108' to the PokéWallet API set_id.
+
+    Tries three strategies in order:
+    1. Hardcoded table — for sets where count-based matching is ambiguous
+       (local DB includes secret rares; API card_count does not).
+    2. Exact count match + set_code prefix overlap.
+    3. Returns None — caller falls back to name-only search.
+    """
+    if not local_id or "-" not in local_id:
+        return None
+    set_code = local_id.rsplit("-", 1)[0]
+
+    # ── 1. Hardcoded overrides ──────────────────────────────────────
+    # Keys are local set prefixes (strip trailing digits from set_code).
+    # Values are the API numeric set_id confirmed by manual testing.
+    _KNOWN: dict[str, str] = {
+        # HGSS era (2009-2011) — fraction queries return no results
+        "hgss1": "1402",   # HeartGold SoulSilver
+        "hgss2": "1399",   # Unleashed
+        "hgss3": "1403",   # Undaunted
+        "hgss4": "1381",   # Triumphant
+        "col1":  "1415",   # Call of Legends
+        # XY era (2013-2016) — fraction returns no results
+        "xy1":   "1387",   # XY Base Set
+        "xy2":   "1464",   # Flashfire
+        "xy3":   "1481",   # Furious Fists
+        "xy4":   "1494",   # Phantom Forces
+        "xy5":   "1509",   # Primal Clash
+        "xy6":   "1534",   # Roaring Skies
+        "xy7":   "1576",   # Ancient Origins
+        "xy8":   "1661",   # BREAKthrough
+        "xy9":   "1701",   # BREAKpoint
+        "xy10":  "1780",   # Fates Collide
+        "xy11":  "1815",   # Steam Siege
+        "xy12":  "1842",   # Evolutions
+        # Sun & Moon era (2017-2019) — count ambiguous due to secrets
+        "sm3":   "1957",   # Burning Shadows
+        "sm2":   "1919",   # Guardians Rising
+        "sm4":   "2071",   # Crimson Invasion
+        "sm5":   "2178",   # Ultra Prism
+        "sm6":   "2209",   # Forbidden Light
+        "sm7":   "2278",   # Celestial Storm
+        "sm9":   "2377",   # Team Up
+        "sm10":  "2420",   # Unbroken Bonds
+        "sm11":  "2464",   # Unified Minds
+        "sm12":  "2534",   # Cosmic Eclipse
+    }
+    if set_code in _KNOWN:
+        return _KNOWN[set_code]
+
+    # ── 2. Exact count + set_code prefix match ──────────────────────
+    db = _load_db()
+    if not db:
+        return None
+    local_count = sum(1 for c in db._cards
+                      if c.get("id", "").rsplit("-", 1)[0] == set_code)
+    if not local_count:
+        return None
+
+    sets = _get_pokewallet_sets()
+    if not sets:
+        return None
+
+    prefix = re.sub(r"\d+", "", set_code).upper()
+
+    def _code_matches(s: dict) -> bool:
+        sc = (s.get("set_code") or "").upper()
+        return prefix in sc or sc in prefix
+
+    exact = [s for s in sets
+             if s.get("language") in ("eng", None)
+             and s.get("card_count") == local_count
+             and _code_matches(s)]
+
+    if len(exact) == 1:
+        return str(exact[0]["set_id"])
+
+    return None
 
 # Module-level cache so CardDatabase is only loaded once across all calls
 _db = None
@@ -218,13 +341,16 @@ def get_pokewallet_prices(card_name: str, card_local_id: str | None = None) -> l
     # 3rd try: "Charizard"        — name only fallback
     fraction   = _format_card_number(card_local_id) if card_local_id else None
     raw_number = card_local_id.rsplit("-", 1)[-1] if card_local_id else None
+    api_set_id = _api_set_id_for(card_local_id) if card_local_id else None
 
     queries: list[str] = []
     if fraction:
-        queries.append(f"{name} {fraction}")
+        queries.append(f"{name} {fraction}")          # "Charizard 4/102"
+    if api_set_id and raw_number:
+        queries.append(f"{api_set_id} {raw_number}")  # "1402 108" (most precise)
     if raw_number and raw_number != fraction:
-        queries.append(f"{name} {raw_number}")
-    queries.append(name)
+        queries.append(f"{name} {raw_number}")        # "Charizard 4"
+    queries.append(name)                              # "Charizard" (broadest)
 
     cards: list = []
     for search_q in queries:
@@ -321,14 +447,23 @@ def get_pokewallet_prices(card_name: str, card_local_id: str | None = None) -> l
     seen_labels: set = set()
     all_variants: list = []
 
+    def _normalise(n: str) -> str:
+        """Normalise name for fuzzy matching: strip suffixes, remove punctuation."""
+        n = re.sub(r"\s*-\s*\d+/\d+.*$", "", n)           # "Char ex - 006/165" → "Char ex"
+        n = re.sub(r"[()]", " ", n)                         # "Feraligatr (Prime)" → "Feraligatr  Prime"
+        n = re.sub(r"-(?=[A-Za-z])", " ", n)               # "Xerneas-EX" → "Xerneas EX"
+        return " ".join(n.lower().split())                  # normalise whitespace
+
+    name_norm = _normalise(name_lower)
+
     for c in sorted(cards, key=_score, reverse=True):
-        info_c = c.get("card_info") or c
-        # Match exact name OR names like "Charizard ex - 006/165" where the
-        # API appends the card number to distinguish set variants.
-        api_name = info_c.get("name", "").lower()
-        if not (api_name == name_lower
-                or api_name.startswith(name_lower + " ")
-                or api_name.startswith(name_lower + "-")):
+        info_c   = c.get("card_info") or c
+        api_raw  = info_c.get("name", "")
+        api_norm = _normalise(api_raw)
+        # Accept if normalised names match exactly or API name starts with ours
+        if not (api_norm == name_norm
+                or api_norm.startswith(name_norm + " ")
+                or api_norm.startswith(name_norm + "-")):
             continue
         cset      = info_c.get("set_name", "")
         prices_c  = (c.get("tcgplayer") or {}).get("prices") or []
