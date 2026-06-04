@@ -72,43 +72,129 @@ def _api_set_id_for(local_id: str) -> str | None:
     set_code = local_id.rsplit("-", 1)[0]
 
     # ── 1. Hardcoded overrides ──────────────────────────────────────
-    # Keys are local set prefixes (strip trailing digits from set_code).
-    # Values are the API numeric set_id confirmed by manual testing.
+    # Verified against the PokéWallet API sets list (data/pokewallet_sets.json).
+    # Covers all major English sets so the scraper never falls back to fuzzy
+    # count-matching, which is ambiguous for sets with secret rares.
     _KNOWN: dict[str, str] = {
-        # HGSS era (2009-2011) — fraction queries return no results
-        "hgss1": "1402",   # HeartGold SoulSilver
-        "hgss2": "1399",   # Unleashed
-        "hgss3": "1403",   # Undaunted
-        "hgss4": "1381",   # Triumphant
-        "col1":  "1415",   # Call of Legends
-        # XY era (2013-2016) — fraction returns no results
-        "xy1":   "1387",   # XY Base Set
-        "xy2":   "1464",   # Flashfire
-        "xy3":   "1481",   # Furious Fists
-        "xy4":   "1494",   # Phantom Forces
-        "xy5":   "1509",   # Primal Clash
-        "xy6":   "1534",   # Roaring Skies
-        "xy7":   "1576",   # Ancient Origins
-        "xy8":   "1661",   # BREAKthrough
-        "xy9":   "1701",   # BREAKpoint
-        "xy10":  "1780",   # Fates Collide
-        "xy11":  "1815",   # Steam Siege
-        "xy12":  "1842",   # Evolutions
-        # Celebrations (2021) — "celebrations" is penalised in scoring
-        # unless the target set_id is explicitly set here
-        "cel25":  "2867",  # Celebrations
-        "cel25c": "2931",  # Celebrations: Classic Collection
-        # Sun & Moon era (2017-2019) — count ambiguous due to secrets
-        "sm3":   "1957",   # Burning Shadows
-        "sm2":   "1919",   # Guardians Rising
-        "sm4":   "2071",   # Crimson Invasion
-        "sm5":   "2178",   # Ultra Prism
-        "sm6":   "2209",   # Forbidden Light
-        "sm7":   "2278",   # Celestial Storm
-        "sm9":   "2377",   # Team Up
-        "sm10":  "2420",   # Unbroken Bonds
-        "sm11":  "2464",   # Unified Minds
-        "sm12":  "2534",   # Cosmic Eclipse
+        # Base / Vintage (1999-2002)
+        "base1":  "604",    # Base Set
+        "base2":  "635",    # Jungle
+        "base3":  "630",    # Fossil
+        "base4":  "605",    # Base Set 2
+        "base5":  "1373",   # Team Rocket
+        "base6":  "1374",   # Legendary Collection
+        "gym1":   "1441",   # Gym Heroes
+        "gym2":   "24202",  # Gym Challenge
+        # Neo (2000-2002)
+        "neo1":   "-128",   # Neo Genesis
+        "neo2":   "-129",   # Neo Discovery
+        "neo3":   "-130",   # Neo Revelation  (also 1389)
+        "neo4":   "1444",   # Neo Destiny
+        # e-Card / Expedition (2002-2003)
+        "ecard1": "-93",    # Expedition Base Set
+        "ecard2": "1397",   # Aquapolis
+        "ecard3": "1372",   # Skyridge
+        # EX Series (2003-2007)
+        "ex1":    "1393",   # Ruby & Sapphire
+        "ex2":    "1392",   # Sandstorm
+        "ex3":    "1376",   # Dragon
+        "ex4":    "1377",   # Team Magma vs Team Aqua
+        "ex5":    "1416",   # Hidden Legends
+        "ex6":    "1419",   # FireRed & LeafGreen
+        "ex7":    "1428",   # Team Rocket Returns
+        "ex8":    "1404",   # Deoxys
+        "ex9":    "1410",   # Emerald
+        "ex10":   "1398",   # Unseen Forces
+        "ex11":   "1429",   # Delta Species
+        "ex12":   "1378",   # Legend Maker
+        "ex13":   "1379",   # Holon Phantoms
+        "ex14":   "1395",   # Crystal Guardians
+        "ex15":   "1411",   # Dragon Frontiers
+        "ex16":   "-91",    # Power Keepers
+        # Diamond & Pearl (2007-2009)
+        "dp1":    "1430",   # Diamond and Pearl
+        "dp2":    "1368",   # Mysterious Treasures
+        "dp3":    "1380",   # Secret Wonders
+        "dp4":    "1405",   # Great Encounters
+        "dp5":    "1390",   # Majestic Dawn
+        "dp6":    "1417",   # Legends Awakened
+        "dp7":    "1369",   # Stormfront
+        "pl1":    "1406",   # Platinum
+        "pl2":    "1367",   # Rising Rivals
+        "pl3":    "1384",   # Supreme Victors
+        "pl4":    "1391",   # Arceus
+        # HeartGold SoulSilver (2010-2011)
+        "hgss1":  "1402",   # HeartGold SoulSilver
+        "hgss2":  "1399",   # Unleashed
+        "hgss3":  "1403",   # Undaunted
+        "hgss4":  "1381",   # Triumphant
+        "col1":   "1415",   # Call of Legends
+        # Black & White (2011-2013)
+        "bw1":    "1400",   # Black and White
+        "bw2":    "1424",   # Emerging Powers
+        "bw3":    "1385",   # Noble Victories
+        "bw4":    "-126",   # Next Destinies
+        "bw5":    "1386",   # Dark Explorers
+        "bw6":    "-85",    # Dragons Exalted
+        "bw7":    "1408",   # Boundaries Crossed
+        "bw8":    "1413",   # Plasma Storm
+        "bw9":    "1382",   # Plasma Freeze
+        "bw10":   "1370",   # Plasma Blast
+        "bw11":   "1409",   # Legendary Treasures
+        # XY (2013-2016)
+        "xy1":    "1387",   # XY Base Set
+        "xy2":    "1464",   # Flashfire
+        "xy3":    "1481",   # Furious Fists
+        "xy4":    "1494",   # Phantom Forces
+        "xy5":    "1509",   # Primal Clash
+        "xy6":    "1534",   # Roaring Skies
+        "xy7":    "1576",   # Ancient Origins
+        "xy8":    "1661",   # BREAKthrough
+        "xy9":    "2175",   # BREAKpoint
+        "xy10":   "1780",   # Fates Collide
+        "xy11":   "1815",   # Steam Siege
+        "xy12":   "1842",   # Evolutions
+        # Sun & Moon (2017-2019)
+        "sm1":    "1880",   # Sun & Moon
+        "sm2":    "1919",   # Guardians Rising
+        "sm3":    "1957",   # Burning Shadows
+        "sm4":    "2071",   # Crimson Invasion
+        "sm5":    "2178",   # Ultra Prism
+        "sm6":    "2209",   # Forbidden Light
+        "sm7":    "2278",   # Celestial Storm
+        "sm8":    "2295",   # Dragon Majesty
+        "sm9":    "2377",   # Team Up
+        "sm10":   "2420",   # Unbroken Bonds
+        "sm11":   "2464",   # Unified Minds
+        "sm12":   "2534",   # Cosmic Eclipse
+        # Sword & Shield (2020-2023)
+        "swsh1":  "-171",   # Sword & Shield Base Set
+        "swsh2":  "2626",   # Rebel Clash
+        "swsh3":  "2675",   # Darkness Ablaze
+        "swsh4":  "2701",   # Vivid Voltage
+        "swsh5":  "2765",   # Battle Styles
+        "swsh6":  "2807",   # Chilling Reign
+        "swsh7":  "2848",   # Evolving Skies
+        "swsh8":  "2906",   # Fusion Strike
+        "swsh9":  "2948",   # Brilliant Stars
+        "swsh10": "3040",   # Astral Radiance
+        "swsh11": "3118",   # Lost Origin
+        "swsh12": "3170",   # Silver Tempest
+        # Scarlet & Violet (2023-)
+        "sv1":    "22873",  # Scarlet & Violet Base Set
+        "sv2":    "23120",  # Paldea Evolved
+        "sv3":    "23228",  # Obsidian Flames
+        "sv3pt5": "23237",  # Pokémon 151
+        "sv4":    "23286",  # Paradox Rift
+        "sv4pt5": "23353",  # Paldean Fates
+        "sv5":    "23381",  # Temporal Forces
+        "sv6":    "23473",  # Twilight Masquerade
+        "sv6pt5": "23529",  # Shrouded Fable
+        "sv7":    "23537",  # Stellar Crown
+        "sv8":    "23651",  # Surging Sparks
+        # Celebrations (2021)
+        "cel25":  "2867",   # Celebrations
+        "cel25c": "2931",   # Celebrations: Classic Collection
     }
     if set_code in _KNOWN:
         return _KNOWN[set_code]
