@@ -261,8 +261,6 @@ _PULL_ODDS_ERA_WEIGHT: dict[str, float] = {
     "recent":    1.00,   # full weight for active sets
 }
 
-# Module-level cache for popularity data so the CSV is only read once
-_popularity_cache: dict[str, float] | None = None
 # Module-level cache for the card DB (used for pull-odds counting)
 _card_db_cache: list | None = None
 
@@ -271,19 +269,7 @@ _card_db_cache: list | None = None
 # Private helpers
 # ---------------------------------------------------------------------------
 
-def _load_popularity() -> dict[str, float]:
-    global _popularity_cache
-    if _popularity_cache is not None:
-        return _popularity_cache
-
-    path = os.path.join(os.path.dirname(__file__), "..", "data", "popularity.csv")
-    scores: dict[str, float] = {}
-    if os.path.exists(path):
-        with open(path, newline="", encoding="utf-8") as f:
-            for row in csv.DictReader(f):
-                scores[row["name"].lower()] = float(row["score"])
-    _popularity_cache = scores
-    return scores
+from src.pokemon_popularity import get_popularity_score as _pop_lookup
 
 
 def _base_pokemon_name(card_name: str) -> str:
@@ -293,10 +279,9 @@ def _base_pokemon_name(card_name: str) -> str:
 
 
 def _popularity_score(card_name: str) -> float:
-    """Return 0-100 Google Trends score; 0 if not found in popularity.csv."""
-    scores = _load_popularity()
-    base = _base_pokemon_name(card_name).lower()
-    return scores.get(base, 0.0)
+    """Return 0-100 fan popularity score from pokemon_popularity.py."""
+    base = _base_pokemon_name(card_name)
+    return float(_pop_lookup(base))
 
 
 def _card_era(card_id: str) -> str:
