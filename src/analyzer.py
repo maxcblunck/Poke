@@ -86,53 +86,180 @@ _SUFFIX_RE = re.compile(
 # ---------------------------------------------------------------------------
 # Pull rates — average packs to open before seeing ONE of a given rarity
 # (any card of that rarity, not a specific one).
-# Sourced from community pack-opening data and official set disclosures.
+#
+# Per-set rates sourced from ThePriceDex community aggregations, Card Shop
+# Live empirical samples, and DigitalTQ pack-opening data.
+# Era-based defaults are used when no per-set rate is available.
+#
+# Format:  _SET_PULL_RATES[set_code][rarity] = packs_per_any_of_that_rarity
 # ---------------------------------------------------------------------------
-_PULL_RATES: dict[tuple, int] = {
-    # Vintage (Base, Jungle, Fossil, Gym, Neo) — ~1/9 for holo slot
-    ("vintage",   "Rare Holo"):              9,
-    ("vintage",   "Rare"):                   5,
-    ("vintage",   "Uncommon"):               2,
-    ("vintage",   "Common"):                 1,
-    # e-Card / EX series (2002-2007)
-    ("oldschool", "Rare Holo"):             12,
-    ("oldschool", "Rare Ultra"):            36,
-    ("oldschool", "Rare"):                   6,
-    ("oldschool", "Uncommon"):               2,
-    ("oldschool", "Common"):                 1,
-    # DP / HGSS / BW (2007-2013)
-    ("classic",   "Rare Holo"):             12,
-    ("classic",   "Rare Prime"):            18,
-    ("classic",   "Rare Ultra"):            18,
-    ("classic",   "Rare Secret"):           36,
-    ("classic",   "Rare Holo LV.X"):        18,
-    ("classic",   "Rare"):                   6,
-    # XY / SM (2014-2019)
-    ("modern",    "Rare Holo"):              8,
-    ("modern",    "Rare Holo EX"):           8,
-    ("modern",    "Rare Holo GX"):           8,
-    ("modern",    "Ultra Rare"):            18,
-    ("modern",    "Rare Ultra"):            18,
-    ("modern",    "Rare Secret"):           36,
-    ("modern",    "Rare Rainbow"):          60,
-    ("modern",    "Rare Shiny"):            20,
-    ("modern",    "Rare Shiny GX"):         60,
-    # SWSH / SV (2020-present)
-    ("recent",    "Rare Holo"):              8,
-    ("recent",    "Rare Holo V"):            8,
-    ("recent",    "Rare Holo VMAX"):         8,
-    ("recent",    "Rare Holo VSTAR"):        8,
-    ("recent",    "Double Rare"):            8,
-    ("recent",    "ACE SPEC Rare"):         35,
-    ("recent",    "Ultra Rare"):            12,
-    ("recent",    "Illustration Rare"):      8,
-    ("recent",    "Special Illustration Rare"): 70,
-    ("recent",    "Hyper Rare"):            70,
-    ("recent",    "Rare Rainbow"):          60,
-    ("recent",    "Rare Secret"):           20,
-    ("recent",    "Trainer Gallery Rare Holo"): 18,
+_SET_PULL_RATES: dict[str, dict[str, float]] = {
+    # ── Scarlet & Violet era ──────────────────────────────────────────
+    "sv1": {
+        "Hyper Rare": 54.1, "Special Illustration Rare": 31.7,
+        "Ultra Rare": 15.2, "Illustration Rare": 13.0,
+        "Double Rare": 7.3, "Rare Holo": 1.3,
+    },
+    "sv2": {
+        "Hyper Rare": 56.8, "Special Illustration Rare": 31.5,
+        "Ultra Rare": 15.1, "Illustration Rare": 13.0,
+        "Double Rare": 7.3, "Rare Holo": 1.3,
+    },
+    "sv3": {
+        "Hyper Rare": 52.1, "Special Illustration Rare": 31.9,
+        "Ultra Rare": 15.1, "Illustration Rare": 13.2,
+        "Double Rare": 7.3, "Rare Holo": 1.3,
+    },
+    "sv3pt5": {   # 151
+        "Hyper Rare": 51.5, "Special Illustration Rare": 32.2,
+        "Ultra Rare": 15.5, "Illustration Rare": 11.8,
+        "Double Rare": 7.5, "Rare Holo": 1.2,
+    },
+    "sv4": {      # Paradox Rift — notably harder for SIR/HR
+        "Hyper Rare": 82.0, "Special Illustration Rare": 47.4,
+        "Ultra Rare": 15.1, "Illustration Rare": 13.0,
+        "Double Rare": 6.4, "Rare Holo": 1.3,
+    },
+    "sv4pt5": {   # Paldean Fates
+        "Hyper Rare": 62.1, "Special Illustration Rare": 58.1,
+        "Ultra Rare": 15.1, "Illustration Rare": 13.9,
+        "Double Rare": 6.3, "Rare Holo": 1.3,
+    },
+    "sv5": {      # Temporal Forces — big jump in SIR/HR difficulty
+        "Hyper Rare": 138.9, "Special Illustration Rare": 85.5,
+        "Ultra Rare": 15.0,  "Illustration Rare": 13.0,
+        "ACE SPEC Rare": 20.0, "Double Rare": 5.9, "Rare Holo": 1.3,
+    },
+    "sv6": {      # Twilight Masquerade
+        "Hyper Rare": 147.1, "Special Illustration Rare": 85.5,
+        "Ultra Rare": 15.1,  "Illustration Rare": 12.9,
+        "ACE SPEC Rare": 19.8, "Double Rare": 5.9, "Rare Holo": 1.3,
+    },
+    "sv6pt5": {   # Shrouded Fable
+        "Hyper Rare": 128.3, "Special Illustration Rare": 87.2,
+        "Ultra Rare": 14.3,  "Illustration Rare": 13.0,
+        "ACE SPEC Rare": 20.0, "Double Rare": 6.0, "Rare Holo": 1.3,
+    },
+    "sv7": {      # Stellar Crown
+        "Hyper Rare": 137.0, "Special Illustration Rare": 90.1,
+        "Ultra Rare": 14.8,  "Illustration Rare": 12.8,
+        "ACE SPEC Rare": 20.2, "Double Rare": 5.9, "Rare Holo": 1.3,
+    },
+    "sv8": {      # Surging Sparks — hardest HR in SV era (1/189)
+        "Hyper Rare": 188.7, "Special Illustration Rare": 87.0,
+        "Ultra Rare": 14.8,  "Illustration Rare": 13.0,
+        "ACE SPEC Rare": 19.9, "Double Rare": 5.9, "Rare Holo": 1.3,
+    },
+    "sv8pt5": {   # Prismatic Evolutions
+        "Hyper Rare": 178.6, "Special Illustration Rare": 45.0,
+        "Ultra Rare": 13.4,  "ACE SPEC Rare": 21.4,
+        "Double Rare": 6.1,  "Rare Holo": 1.3,
+    },
+    "sv9": {      # Journey Together
+        "Hyper Rare": 137.0, "Special Illustration Rare": 86.2,
+        "Ultra Rare": 15.3,  "Illustration Rare": 11.8,
+        "Double Rare": 4.9,  "Rare Holo": 1.4,
+    },
+    # ── Sword & Shield era ───────────────────────────────────────────
+    "swsh1": {
+        "Rare Secret": 109.9, "Rare Rainbow": 81.3,
+        "Ultra Rare": 26.7,   "Rare Holo VMAX": 45.5,
+        "Rare Holo V": 7.0,   "Rare Holo": 5.5,   "Rare": 1.7,
+    },
+    "swsh35": {   # Champion's Path
+        "Rare Secret": 75.8,  "Rare Rainbow": 63.7,
+        "Ultra Rare": 18.6,   "Rare Holo VMAX": 28.2,
+        "Rare Holo V": 6.4,   "Rare Holo": 1.4,
+    },
+    "swsh45": {   # Shining Fates
+        "Rare Secret": 109.9, "Rare Rainbow": 84.0,
+        "Ultra Rare": 30.8,   "Rare Holo VMAX": 18.4,
+        "Rare Holo V": 9.2,   "Rare Holo": 5.6,   "Rare": 1.6,
+    },
+    "swsh8": {    # Fusion Strike
+        "Rare Secret": 120.0, "Rare Rainbow": 91.9,
+        "Ultra Rare": 26.0,   "Rare Holo VMAX": 26.5,
+        "Rare Holo V": 11.1,  "Rare Holo": 5.6,   "Rare": 1.6,
+    },
+    "swsh9": {    # Brilliant Stars (first Trainer Gallery set)
+        "Rare Secret": 117.0, "Rare Rainbow": 68.0,
+        "Ultra Rare": 24.3,   "Rare Holo VSTAR": 43.0,
+        "Rare Holo V": 7.0,   "Rare Holo": 5.7,   "Rare": 1.7,
+        "Trainer Gallery Rare Holo": 11.4,
+    },
+    "swsh10": {   # Astral Radiance
+        "Rare Secret": 131.6, "Rare Rainbow": 78.1,
+        "Ultra Rare": 25.3,   "Rare Holo VSTAR": 37.1,
+        "Rare Holo V": 7.8,   "Rare Holo": 5.7,   "Rare": 1.7,
+        "Trainer Gallery Rare Holo": 11.4,
+    },
+    "swsh11": {   # Lost Origin
+        "Rare Secret": 131.6, "Rare Rainbow": 78.1,
+        "Ultra Rare": 25.6,   "Rare Holo VSTAR": 26.4,
+        "Rare Holo V": 8.6,   "Rare Holo": 5.6,   "Rare": 1.7,
+        "Trainer Gallery Rare Holo": 11.7,
+    },
+    "swsh12pt5": {  # Crown Zenith
+        "Rare Secret": 133.3, "Rare Rainbow": 35.1,
+        "Ultra Rare": 35.1,   "Rare Holo VSTAR": 30.7,
+        "Rare Holo VMAX": 49.1, "Rare Holo V": 8.1,
+        "Rare Holo": 5.6,     "Rare": 1.6,
+        "Trainer Gallery Rare Holo": 4.5,
+    },
 }
-_PULL_RATE_DEFAULT = 6   # fallback for unrecognised rarity/era combos
+
+# Era-based fallback rates (used when no per-set entry exists)
+_ERA_PULL_RATES: dict[tuple, float] = {
+    # Vintage (Base, Jungle, Fossil, Gym, Neo)
+    ("vintage",   "Rare Holo"):              9.0,
+    ("vintage",   "Rare"):                   5.0,
+    ("vintage",   "Uncommon"):               2.0,
+    ("vintage",   "Common"):                 1.0,
+    # e-Card / EX (2002-2007)
+    ("oldschool", "Rare Holo"):             12.0,
+    ("oldschool", "Rare Ultra"):            36.0,
+    ("oldschool", "Rare"):                   6.0,
+    # DP / HGSS / BW (2007-2013)
+    ("classic",   "Rare Holo"):             12.0,
+    ("classic",   "Rare Ultra"):            18.0,
+    ("classic",   "Rare Secret"):           36.0,
+    ("classic",   "Rare Prime"):            18.0,
+    # XY / SM (2014-2019)
+    ("modern",    "Rare Holo"):              8.0,
+    ("modern",    "Rare Holo EX"):           8.0,
+    ("modern",    "Rare Holo GX"):           8.0,
+    ("modern",    "Ultra Rare"):            18.0,
+    ("modern",    "Rare Ultra"):            18.0,
+    ("modern",    "Rare Secret"):           36.0,
+    ("modern",    "Rare Rainbow"):          60.0,
+    ("modern",    "Rare Shiny GX"):         60.0,
+    # SWSH / SV fallback
+    ("recent",    "Rare Holo"):              5.6,
+    ("recent",    "Rare Holo V"):            8.0,
+    ("recent",    "Rare Holo VMAX"):        45.0,
+    ("recent",    "Rare Holo VSTAR"):       35.0,
+    ("recent",    "Double Rare"):            7.0,
+    ("recent",    "ACE SPEC Rare"):         20.0,
+    ("recent",    "Ultra Rare"):            15.0,
+    ("recent",    "Illustration Rare"):     13.0,
+    ("recent",    "Special Illustration Rare"): 87.0,
+    ("recent",    "Hyper Rare"):           137.0,
+    ("recent",    "Rare Rainbow"):          80.0,
+    ("recent",    "Rare Secret"):          120.0,
+    ("recent",    "Trainer Gallery Rare Holo"): 18.0,
+}
+_PULL_RATE_DEFAULT = 6.0
+
+# How much pull odds contributes to the composite score per era.
+# Vintage/oldschool cards are no longer being opened from packs so
+# pack odds don't drive their secondary market price the same way.
+_PULL_ODDS_ERA_WEIGHT: dict[str, float] = {
+    "vintage":   0.10,   # 10 % of the 15 % weight
+    "oldschool": 0.25,
+    "classic":   0.45,
+    "modern":    0.70,
+    "recent":    1.00,   # full weight for active sets
+}
 
 # Module-level cache for popularity data so the CSV is only read once
 _popularity_cache: dict[str, float] | None = None
@@ -214,21 +341,27 @@ def _load_card_db() -> list:
     return _card_db_cache
 
 
-def _pull_odds_packs(card_details: dict) -> float:
+def _pull_odds_packs(card_details: dict) -> tuple[float, float]:
     """
-    Return the average number of packs needed to pull THIS specific card.
+    Return (packs_to_pull, era_weight) for this specific card.
 
-    Formula:  packs_to_pull = base_rate_for_rarity × cards_of_same_rarity_in_set
-
-    A common card might need 3 packs on average; a specific Special
-    Illustration Rare in a 5-SIR set (1/70 rate) needs 350 packs.
+    packs_to_pull  — average packs needed to pull this exact card from a
+                     fresh booster. Uses per-set community data where
+                     available, falls back to era-based estimates.
+    era_weight     — 0.0–1.0 scaling factor that reduces the pull-odds
+                     contribution for older sets where packs are no longer
+                     actively opened (secondary market dominates pricing).
     """
-    era    = _card_era(card_details.get("id", "recent-0"))
-    rarity = card_details.get("rarity", "Common")
+    era      = _card_era(card_details.get("id", "recent-0"))
+    rarity   = card_details.get("rarity", "Common")
     set_code = card_details.get("id", "").rsplit("-", 1)[0]
 
-    base_rate = _PULL_RATES.get((era, rarity), _PULL_RATE_DEFAULT)
+    # 1. Per-set rate (most accurate) → era-based fallback
+    set_rates = _SET_PULL_RATES.get(set_code, {})
+    base_rate = (set_rates.get(rarity)
+                 or _ERA_PULL_RATES.get((era, rarity), _PULL_RATE_DEFAULT))
 
+    # 2. Count how many distinct cards share this rarity in the set
     cards = _load_card_db()
     count_in_set = sum(
         1 for c in cards
@@ -236,7 +369,9 @@ def _pull_odds_packs(card_details: dict) -> float:
         and c.get("rarity") == rarity
     ) or 1
 
-    return float(base_rate * count_in_set)
+    packs_to_pull = base_rate * count_in_set
+    era_weight    = _PULL_ODDS_ERA_WEIGHT.get(era, 1.0)
+    return float(packs_to_pull), era_weight
 
 
 def _parse_price(price_str) -> float | None:
@@ -346,7 +481,7 @@ def analyze_card(
     scar_score = _scarcity_score(card_details) if card_details else 10.0
 
     # 8. Pull odds
-    pull_packs = _pull_odds_packs(card_details) if card_details else 6.0
+    pull_packs, pull_era_w = _pull_odds_packs(card_details) if card_details else (6.0, 1.0)
 
     # ------------------------------------------------------------------
     # Composite score
@@ -376,14 +511,14 @@ def analyze_card(
     scar_raw = max(-50.0, min(50.0, (scar_score - 30.0) * (50.0 / 70.0)))
     comp_f   = scar_raw * 0.15
 
-    # H — pull odds (weight 15 %)
-    # Map log(packs_to_pull) onto -50 to +50.
-    # Breakeven at ~20 packs (common rare holo); hard-to-pull SIRs (350+) → +50.
-    # log scale so the difference between 1 and 20 packs is visible, not just 1 vs 350.
+    # H — pull odds (up to 15 %, scaled down for older eras)
+    # Log scale: breakeven at ~20 packs; SIRs at 350-900 packs → near +50.
+    # Era weight: vintage cards get only 10% of this signal since their
+    # prices are driven by secondary market scarcity, not pack openings.
     pull_raw = max(-50.0, min(50.0,
         (math.log(pull_packs + 1) - math.log(21)) / math.log(17) * 50.0
     ))
-    comp_h  = pull_raw * 0.15
+    comp_h  = pull_raw * 0.15 * pull_era_w
 
     composite_score = round(comp_a + comp_b + comp_c + comp_d + comp_e + comp_f + comp_h, 1)
 
