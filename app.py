@@ -404,7 +404,9 @@ def signal_chips(result: dict) -> str:
     chips = []
     trend = result.get("trend")
     pct   = result.get("trend_pct_change")
-    if trend:
+    if trend == "no data":
+        chips.append("━ Trend: not enough sales history")
+    elif trend:
         icon = "▲" if trend == "rising" else ("▼" if trend == "falling" else "━")
         sign = "+" if (pct or 0) >= 0 else ""
         chips.append(f'{icon} Trend: {trend.title()} ({sign}{pct:.1f}%)' if pct is not None else f"{icon} {trend.title()}")
@@ -418,6 +420,9 @@ def signal_chips(result: dict) -> str:
     scar = result.get("scarcity_score")
     if scar is not None:
         chips.append(f"⧖ Scarcity {scar:.0f}/100")
+    pull = result.get("pull_odds_packs")
+    if pull is not None:
+        chips.append(f"◈ ~{pull:.0f} packs to pull")
     return "".join(f'<span class="signal-chip">{c}</span>' for c in chips)
 
 
@@ -675,12 +680,11 @@ if st.session_state.analysis_result:
         # Score bar
         st.markdown(score_bar(r.get("composite_score")), unsafe_allow_html=True)
 
-        # Price metrics — driven by the selected variant
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Market", fmt_price(pw.get("market") or r.get("average_price")))
-        m2.metric("Mid",    fmt_price(pw.get("mid")    or r.get("median_price")))
-        m3.metric("Low",    fmt_price(pw.get("low")    or r.get("lowest_price")))
-        m4.metric("High",   fmt_price(pw.get("high")   or r.get("highest_price")))
+        # Price metrics — market price from API; low/high show the listing spread
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Market Price", fmt_price(pw.get("market") or r.get("average_price")))
+        m2.metric("Lowest Ask",   fmt_price(pw.get("low")    or r.get("lowest_price")))
+        m3.metric("Highest Ask",  fmt_price(pw.get("high")   or r.get("highest_price")))
 
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -689,14 +693,19 @@ if st.session_state.analysis_result:
 
         # Extra detail expander
         with st.expander("Full signal breakdown"):
+            trend_str = r.get("trend", "N/A")
+            if trend_str not in ("no data", None, ""):
+                pct_val = r.get("trend_pct_change")
+                sign    = "+" if (pct_val or 0) >= 0 else ""
+                trend_str = f"{trend_str.title()} ({sign}{pct_val:.1f}%)" if pct_val is not None else trend_str.title()
+            else:
+                trend_str = "Not enough sales history"
             rows = {
-                "Sales analysed":   r.get("num_sales"),
-                "Trend":            f"{r.get('trend','').title()}  ({'+' if (r.get('trend_pct_change') or 0) >= 0 else ''}{r.get('trend_pct_change','N/A'):.1f}%)" if r.get("trend_pct_change") is not None else r.get("trend"),
-                "Volatility":       f"{r.get('volatility','').title()}  (σ={fmt_price(r.get('volatility_std'))})",
-                "Rarity baseline":  r.get("rarity_baseline") or "N/A",
-                "Popularity score": f"{r.get('popularity_score','N/A')} / 100",
-                "Scarcity score":   f"{r.get('scarcity_score','N/A')} / 100",
-                "Composite score":  r.get("composite_score"),
+                "Trend (last 10 sales)": trend_str,
+                "Popularity":            f"{r.get('popularity_score','N/A')} / 100",
+                "Scarcity (era+rarity)": f"{r.get('scarcity_score','N/A')} / 100",
+                "Avg packs to pull":     f"~{r.get('pull_odds_packs','N/A')} packs",
+                "Composite score":       r.get("composite_score"),
             }
             for k, v in rows.items():
                 c_l, c_r = st.columns([1, 2])

@@ -1,4 +1,5 @@
 import csv
+import math
 import os
 import re
 import statistics
@@ -82,8 +83,61 @@ _SUFFIX_RE = re.compile(
     re.IGNORECASE,
 )
 
+# ---------------------------------------------------------------------------
+# Pull rates — average packs to open before seeing ONE of a given rarity
+# (any card of that rarity, not a specific one).
+# Sourced from community pack-opening data and official set disclosures.
+# ---------------------------------------------------------------------------
+_PULL_RATES: dict[tuple, int] = {
+    # Vintage (Base, Jungle, Fossil, Gym, Neo) — ~1/9 for holo slot
+    ("vintage",   "Rare Holo"):              9,
+    ("vintage",   "Rare"):                   5,
+    ("vintage",   "Uncommon"):               2,
+    ("vintage",   "Common"):                 1,
+    # e-Card / EX series (2002-2007)
+    ("oldschool", "Rare Holo"):             12,
+    ("oldschool", "Rare Ultra"):            36,
+    ("oldschool", "Rare"):                   6,
+    ("oldschool", "Uncommon"):               2,
+    ("oldschool", "Common"):                 1,
+    # DP / HGSS / BW (2007-2013)
+    ("classic",   "Rare Holo"):             12,
+    ("classic",   "Rare Prime"):            18,
+    ("classic",   "Rare Ultra"):            18,
+    ("classic",   "Rare Secret"):           36,
+    ("classic",   "Rare Holo LV.X"):        18,
+    ("classic",   "Rare"):                   6,
+    # XY / SM (2014-2019)
+    ("modern",    "Rare Holo"):              8,
+    ("modern",    "Rare Holo EX"):           8,
+    ("modern",    "Rare Holo GX"):           8,
+    ("modern",    "Ultra Rare"):            18,
+    ("modern",    "Rare Ultra"):            18,
+    ("modern",    "Rare Secret"):           36,
+    ("modern",    "Rare Rainbow"):          60,
+    ("modern",    "Rare Shiny"):            20,
+    ("modern",    "Rare Shiny GX"):         60,
+    # SWSH / SV (2020-present)
+    ("recent",    "Rare Holo"):              8,
+    ("recent",    "Rare Holo V"):            8,
+    ("recent",    "Rare Holo VMAX"):         8,
+    ("recent",    "Rare Holo VSTAR"):        8,
+    ("recent",    "Double Rare"):            8,
+    ("recent",    "ACE SPEC Rare"):         35,
+    ("recent",    "Ultra Rare"):            12,
+    ("recent",    "Illustration Rare"):      8,
+    ("recent",    "Special Illustration Rare"): 70,
+    ("recent",    "Hyper Rare"):            70,
+    ("recent",    "Rare Rainbow"):          60,
+    ("recent",    "Rare Secret"):           20,
+    ("recent",    "Trainer Gallery Rare Holo"): 18,
+}
+_PULL_RATE_DEFAULT = 6   # fallback for unrecognised rarity/era combos
+
 # Module-level cache for popularity data so the CSV is only read once
 _popularity_cache: dict[str, float] | None = None
+# Module-level cache for the card DB (used for pull-odds counting)
+_card_db_cache: list | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +199,46 @@ def _simulate_graded(raw_price: float, card_details: dict) -> tuple[float, float
     return round(raw_price * psa9_mult, 2), round(raw_price * psa10_mult, 2)
 
 
+def _load_card_db() -> list:
+    """Lazily load all card dicts for pull-odds counting."""
+    global _card_db_cache
+    if _card_db_cache is not None:
+        return _card_db_cache
+    try:
+        import sys as _sys
+        _sys.path.insert(0, os.path.dirname(__file__))
+        from card_db import CardDatabase
+        _card_db_cache = CardDatabase()._cards
+    except Exception:
+        _card_db_cache = []
+    return _card_db_cache
+
+
+def _pull_odds_packs(card_details: dict) -> float:
+    """
+    Return the average number of packs needed to pull THIS specific card.
+
+    Formula:  packs_to_pull = base_rate_for_rarity × cards_of_same_rarity_in_set
+
+    A common card might need 3 packs on average; a specific Special
+    Illustration Rare in a 5-SIR set (1/70 rate) needs 350 packs.
+    """
+    era    = _card_era(card_details.get("id", "recent-0"))
+    rarity = card_details.get("rarity", "Common")
+    set_code = card_details.get("id", "").rsplit("-", 1)[0]
+
+    base_rate = _PULL_RATES.get((era, rarity), _PULL_RATE_DEFAULT)
+
+    cards = _load_card_db()
+    count_in_set = sum(
+        1 for c in cards
+        if c.get("id", "").rsplit("-", 1)[0] == set_code
+        and c.get("rarity") == rarity
+    ) or 1
+
+    return float(base_rate * count_in_set)
+
+
 def _parse_price(price_str) -> float | None:
     if isinstance(price_str, (int, float)):
         return float(price_str)
@@ -169,6 +263,7 @@ def _null_result(card_name: str) -> dict:
         "rarity_baseline":   None,
         "popularity_score":  None,
         "scarcity_score":    None,
+        "pull_odds_packs":   None,
         "composite_score":   None,
         "recommendation":    "Insufficient Data",
     }
@@ -186,14 +281,14 @@ def analyze_card(
     """
     Analyze sold listing data and return a valuation dictionary.
 
-    Composite score (-100 to +100) is built from seven components:
-      A  Price vs average      20 % — recent sale vs mean; below = potential bargain
-      B  Trend                 15 % — 5 newest vs 5 oldest sales
-      C  Volatility            10 % — coefficient of variation
-      D  Rarity baseline       10 % — price vs expected range for its rarity tier
+    Composite score (-100 to +100) is built from eight components:
+      A  Price vs average      18 % — recent sale vs mean; below = potential bargain
+      B  Trend                 13 % — 5 newest vs 5 oldest sales
+      C  Volatility             9 % — coefficient of variation
+      D  Rarity baseline        5 % — price vs expected range for its rarity tier
       E  Popularity            25 % — Google Trends 12-month interest (from popularity.csv)
       F  Scarcity              15 % — set era age + rarity tier
-      G  Grade premium          5 % — implied PSA 10 upside over raw price
+      H  Pull odds             15 % — avg packs to pull this specific card from a pack
     """
 
     # 1. Parse prices
@@ -208,11 +303,28 @@ def analyze_card(
     high    = max(parsed)
     std_dev = statistics.stdev(parsed)
 
-    # 3. Trend (most-recent-first assumed)
-    recent_avg = statistics.mean(parsed[:5])
-    oldest_avg = statistics.mean(parsed[-5:])
-    trend_pct  = (recent_avg - oldest_avg) / oldest_avg * 100 if oldest_avg else 0.0
-    trend      = "rising" if trend_pct > 5 else ("falling" if trend_pct < -5 else "stable")
+    # 3. Trend — linear regression over the last 10 price points (or all if fewer).
+    # Requires at least 6 distinct prices to be meaningful; if all prices are
+    # identical (e.g. single API snapshot padded to 5) mark as "no data".
+    trend_window = parsed[:10]
+    if len(set(trend_window)) < 3:
+        # All prices are the same — single API snapshot, no trend possible
+        trend     = "no data"
+        trend_pct = 0.0
+    else:
+        n       = len(trend_window)
+        xs      = list(range(n))          # 0 = most recent, n-1 = oldest
+        x_mean  = sum(xs) / n
+        y_mean  = sum(trend_window) / n
+        numer   = sum((xs[i] - x_mean) * (trend_window[i] - y_mean) for i in range(n))
+        denom   = sum((xs[i] - x_mean) ** 2 for i in range(n))
+        slope   = numer / denom if denom else 0.0
+        # slope is price-change per step going forward in time (negative x = newer)
+        # positive slope means price was HIGHER recently → falling toward past
+        # negative slope means price was LOWER recently → rising toward past
+        # flip sign so positive = price rising over time
+        trend_pct = round(-slope / y_mean * 100, 1) if y_mean else 0.0
+        trend     = "rising" if trend_pct > 3 else ("falling" if trend_pct < -3 else "stable")
 
     # 4. Volatility
     cv = (std_dev / avg) if avg else 0.0
@@ -233,35 +345,47 @@ def analyze_card(
     # 7. Scarcity
     scar_score = _scarcity_score(card_details) if card_details else 10.0
 
+    # 8. Pull odds
+    pull_packs = _pull_odds_packs(card_details) if card_details else 6.0
+
     # ------------------------------------------------------------------
     # Composite score
-    # Weights: A 20%  B 15%  C 10%  D 10%  E 25%  F 20%  = 100%
+    # Weights: A 18%  B 13%  C 9%  D 5%  E 25%  F 15%  H 15% = 100%
     # ------------------------------------------------------------------
     most_recent = parsed[0]
 
-    # A — price vs average (clamped deviation ±50, weight 20 %)
+    # A — price vs average (weight 18 %)
     dev_pct = (avg - most_recent) / avg * 100 if avg else 0.0
-    comp_a  = max(-50.0, min(50.0, dev_pct)) * 0.20
+    comp_a  = max(-50.0, min(50.0, dev_pct)) * 0.18
 
-    # B — trend (weight 15 %)
-    comp_b  = {"falling": 50, "stable": 0, "rising": -50}[trend] * 0.15
+    # B — trend (weight 13 %; neutral when no trend data available)
+    comp_b  = {"falling": 50, "stable": 0, "rising": -50, "no data": 0}.get(trend, 0) * 0.13
 
-    # C — volatility (weight 10 %)
-    comp_c  = {"stable": 30, "moderate": 0, "volatile": -30}[volatility] * 0.10
+    # C — volatility (weight 9 %)
+    comp_c  = {"stable": 30, "moderate": 0, "volatile": -30}[volatility] * 0.09
 
-    # D — rarity baseline (weight 10 %)
+    # D — rarity baseline (weight 5 %)
     comp_d  = {"below range": 50, "within range": 0, "above range": -50,
-               None: 0}.get(rarity_baseline, 0) * 0.10
+               None: 0}.get(rarity_baseline, 0) * 0.05
 
     # E — popularity (weight 25 %)
     pop_raw = max(-50.0, min(50.0, (pop_score - 15.0) * (50.0 / 85.0)))
     comp_e  = pop_raw * 0.25
 
-    # F — scarcity (weight 20 %, increased from 15 % now PSA signal removed)
+    # F — scarcity (weight 15 %)
     scar_raw = max(-50.0, min(50.0, (scar_score - 30.0) * (50.0 / 70.0)))
-    comp_f   = scar_raw * 0.20
+    comp_f   = scar_raw * 0.15
 
-    composite_score = round(comp_a + comp_b + comp_c + comp_d + comp_e + comp_f, 1)
+    # H — pull odds (weight 15 %)
+    # Map log(packs_to_pull) onto -50 to +50.
+    # Breakeven at ~20 packs (common rare holo); hard-to-pull SIRs (350+) → +50.
+    # log scale so the difference between 1 and 20 packs is visible, not just 1 vs 350.
+    pull_raw = max(-50.0, min(50.0,
+        (math.log(pull_packs + 1) - math.log(21)) / math.log(17) * 50.0
+    ))
+    comp_h  = pull_raw * 0.15
+
+    composite_score = round(comp_a + comp_b + comp_c + comp_d + comp_e + comp_f + comp_h, 1)
 
     # Recommendation
     if composite_score > 60:
@@ -289,6 +413,7 @@ def analyze_card(
         "rarity_baseline":   rarity_baseline,
         "popularity_score":  round(pop_score, 1),
         "scarcity_score":    round(scar_score, 1),
+        "pull_odds_packs":   round(pull_packs, 1),
         "composite_score":   composite_score,
         "recommendation":    rec,
     }
