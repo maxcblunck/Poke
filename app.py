@@ -4,6 +4,17 @@ import csv
 import base64
 import streamlit as st
 
+# ── Inject Streamlit Cloud secrets into os.environ BEFORE importing scraper ──
+# On Streamlit Cloud, API keys live in st.secrets (set via the dashboard).
+# The scraper reads os.getenv() so we copy secrets across here, before any
+# module-level os.getenv() calls run during import.
+try:
+    for _k, _v in st.secrets.items():
+        if isinstance(_v, str):
+            os.environ.setdefault(_k, _v)
+except Exception:
+    pass  # running locally — .env handles it
+
 from src.card_db import CardDatabase
 from src.scraper import get_card_prices
 from src.analyzer import analyze_card
@@ -445,7 +456,13 @@ with st.sidebar:
     max_cards         = st.number_input("Max cards", 10, 500, 50, 10)
     sort_order        = st.radio("Sort", ["Highest score first", "Lowest score first"], index=0)
     st.markdown("---")
-    st.markdown("<p style='font-size:0.7rem;color:#555;'>PokéValue v0.1 · Simulated prices</p>", unsafe_allow_html=True)
+    _pw_key = os.environ.get("POKEWALLET_API_KEY", "")
+    if _pw_key.startswith("pk_live_"):
+        st.markdown("<p style='font-size:0.7rem;color:#22c55e;'>&#9679; API Connected (live)</p>", unsafe_allow_html=True)
+    elif _pw_key.startswith("pk_test_"):
+        st.markdown("<p style='font-size:0.7rem;color:#eab308;'>&#9679; API Test Key</p>", unsafe_allow_html=True)
+    else:
+        st.markdown("<p style='font-size:0.7rem;color:#ef4444;'>&#9679; No API Key — simulated</p>", unsafe_allow_html=True)
 
 # ── Hero ─────────────────────────────────────────────────────────────────────────
 st.markdown("""
