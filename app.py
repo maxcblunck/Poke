@@ -614,7 +614,7 @@ for col, val, lbl in [
 st.markdown("---")
 
 # ── Session state ────────────────────────────────────────────────────────────────
-for key, default in [("search_results", []), ("selected_card", None), ("analysis_result", None), ("nm_market_price", None), ("_pw_prices", {}), ("_pw_variants", []), ("_variant_idx", 0), ("data_source", "simulated")]:
+for key, default in [("search_results", []), ("selected_card", None), ("analysis_result", None), ("nm_market_price", None), ("_pw_prices", {}), ("_pw_variants", []), ("_variant_idx", 0), ("_analyzed_variant_idx", 0), ("_raw_prices", []), ("_card_label", ""), ("_card_details_cache", None), ("data_source", "simulated")]:
     if key not in st.session_state:
         st.session_state[key] = default
 
@@ -673,10 +673,15 @@ if st.session_state.search_results:
                 "low":    first.get("low_price"),
                 "high":   first.get("high_price"),
             } if is_pw else {}
-            st.session_state._pw_variants = first.get("all_variants", []) if is_pw else []
-            st.session_state._variant_idx  = 0
-            st.session_state.data_source   = first.get("data_source", "simulated")
-            st.session_state.analysis_result = analyze_card(label, prices, details)
+            st.session_state._pw_variants        = first.get("all_variants", []) if is_pw else []
+            st.session_state._variant_idx        = 0
+            st.session_state._analyzed_variant_idx = 0
+            st.session_state._raw_prices         = prices
+            st.session_state._card_label         = label
+            st.session_state._card_details_cache = details
+            st.session_state.data_source         = first.get("data_source", "simulated")
+            variant_name = first.get("sub_type_name", "") if is_pw else ""
+            st.session_state.analysis_result = analyze_card(label, prices, details, variant=variant_name)
 
 # ── Analysis display ─────────────────────────────────────────────────────────────
 if st.session_state.analysis_result:
@@ -700,6 +705,18 @@ if st.session_state.analysis_result:
             index=st.session_state.get("_variant_idx", 0),
             key="_variant_selector",
         )
+        # Re-analyze when variant changes so scarcity / score reflect the printing
+        if sel_idx != st.session_state.get("_analyzed_variant_idx", 0):
+            sel_variant  = variants[sel_idx]
+            vname        = sel_variant.get("sub_type_name", "")
+            mp = sel_variant.get("market_price") or 0
+            lp = sel_variant.get("low_price")    or mp
+            hp = sel_variant.get("high_price")   or mp
+            v_prices = [{"price": f"${p:.2f}"} for p in [mp, lp, hp, mp, lp]]
+            _lbl     = st.session_state.get("_card_label", r.get("card_name", ""))
+            _det     = st.session_state.get("_card_details_cache")
+            st.session_state.analysis_result       = analyze_card(_lbl, v_prices, _det, variant=vname)
+            st.session_state._analyzed_variant_idx = sel_idx
         st.session_state._variant_idx = sel_idx
     else:
         sel_idx = 0

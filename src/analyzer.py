@@ -393,10 +393,23 @@ def _null_result(card_name: str) -> dict:
 # Public API
 # ---------------------------------------------------------------------------
 
+_VARIANT_SCARCITY_FLOOR: dict[str, float] = {
+    "1st edition shadowless": 90.0,
+    "1st edition":            82.0,
+    "shadowless":             72.0,
+}
+_VARIANT_COMPOSITE_BONUS: dict[str, float] = {
+    "1st edition shadowless": 20.0,
+    "1st edition":            15.0,
+    "shadowless":              8.0,
+}
+
+
 def analyze_card(
     card_name: str,
     prices_list: list[dict],
     card_details: dict | None = None,
+    variant: str = "",
 ) -> dict:
     """
     Analyze sold listing data and return a valuation dictionary.
@@ -462,8 +475,16 @@ def analyze_card(
     # 6. Popularity
     pop_score = _popularity_score(card_name)
 
-    # 7. Scarcity
+    # 7. Scarcity — base score + printing floor for display; direct composite
+    #    bonus bypasses the 100 cap so vintage variants still show differentiation
     scar_score = _scarcity_score(card_details) if card_details else 10.0
+    v_lower = variant.lower()
+    variant_comp_bonus = 0.0
+    for key in _VARIANT_SCARCITY_FLOOR:
+        if key in v_lower:
+            scar_score = max(scar_score, _VARIANT_SCARCITY_FLOOR[key])
+            variant_comp_bonus = _VARIANT_COMPOSITE_BONUS[key]
+            break
 
     # 8. Pull odds
     pull_packs, pull_era_w = _pull_odds_packs(card_details) if card_details else (6.0, 1.0)
@@ -505,7 +526,7 @@ def analyze_card(
     ))
     comp_h  = pull_raw * 0.15 * pull_era_w
 
-    composite_score = round(comp_a + comp_b + comp_c + comp_d + comp_e + comp_f + comp_h, 1)
+    composite_score = round(comp_a + comp_b + comp_c + comp_d + comp_e + comp_f + comp_h + variant_comp_bonus, 1)
 
     # Recommendation
     if composite_score > 60:
