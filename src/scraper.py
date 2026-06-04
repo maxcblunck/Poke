@@ -211,25 +211,39 @@ def get_pokewallet_prices(card_name: str, card_local_id: str | None = None) -> l
     name     = m.group(1).strip() if m else card_name
     set_hint = m.group(2).strip().lower() if m else None
 
-    # ── Step 1: search ──────────────────────────────────────────────
-    # Including the card number (e.g. "Charizard 4/102") targets the
-    # exact printing and avoids promos/variants dominating the results.
-    number_str = _format_card_number(card_local_id) if card_local_id else None
-    search_q   = f"{name} {number_str}" if number_str else name
+    # ── Step 1: search — try progressively looser queries ──────────
+    # 1st try: "Charizard 4/102"  — precise fraction (best for vintage sets)
+    # 2nd try: "Charizard 4"      — raw number only  (for modern sets where
+    #          the API total differs from our local DB total)
+    # 3rd try: "Charizard"        — name only fallback
+    fraction   = _format_card_number(card_local_id) if card_local_id else None
+    raw_number = card_local_id.rsplit("-", 1)[-1] if card_local_id else None
 
-    try:
-        resp = requests.get(
-            f"{POKEWALLET_BASE_URL}/search",
-            headers=headers,
-            params={"q": search_q, "limit": 20},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-    except Exception:
-        return []
+    queries: list[str] = []
+    if fraction:
+        queries.append(f"{name} {fraction}")
+    if raw_number and raw_number != fraction:
+        queries.append(f"{name} {raw_number}")
+    queries.append(name)
 
-    cards = data.get("data") or data.get("results") or []
+    cards: list = []
+    for search_q in queries:
+        try:
+            resp = requests.get(
+                f"{POKEWALLET_BASE_URL}/search",
+                headers=headers,
+                params={"q": search_q, "limit": 20},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception:
+            continue
+        found = data.get("data") or data.get("results") or []
+        if found:
+            cards = found
+            break
+
     if not cards:
         return []
 
@@ -309,8 +323,12 @@ def get_pokewallet_prices(card_name: str, card_local_id: str | None = None) -> l
 
     for c in sorted(cards, key=_score, reverse=True):
         info_c = c.get("card_info") or c
-        # Only collect from results that match the same Pokemon name exactly
-        if info_c.get("name", "").lower() != name_lower:
+        # Match exact name OR names like "Charizard ex - 006/165" where the
+        # API appends the card number to distinguish set variants.
+        api_name = info_c.get("name", "").lower()
+        if not (api_name == name_lower
+                or api_name.startswith(name_lower + " ")
+                or api_name.startswith(name_lower + "-")):
             continue
         cset      = info_c.get("set_name", "")
         prices_c  = (c.get("tcgplayer") or {}).get("prices") or []
