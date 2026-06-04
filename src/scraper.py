@@ -17,6 +17,7 @@ POKEWALLET_BASE_URL  = "https://api.pokewallet.io"
 POKEWALLET_API_KEY   = os.getenv("POKEWALLET_API_KEY", "")
 _SETS_CACHE_PATH     = os.path.join(os.path.dirname(__file__), "..", "data", "pokewallet_sets.json")
 _sets_cache: list | None = None
+_set_language: dict[str, str] = {}   # set_id → language, populated alongside _sets_cache
 
 
 def _get_pokewallet_sets() -> list:
@@ -33,6 +34,10 @@ def _get_pokewallet_sets() -> list:
         try:
             with open(_SETS_CACHE_PATH, encoding="utf-8") as f:
                 _sets_cache = json.load(f)
+                _set_language.update({
+                    str(s["set_id"]): (s.get("language") or "eng")
+                    for s in _sets_cache
+                })
                 return _sets_cache
         except Exception:
             pass
@@ -48,6 +53,10 @@ def _get_pokewallet_sets() -> list:
         )
         if resp.status_code == 200:
             _sets_cache = resp.json().get("data", [])
+            _set_language.update({
+                str(s["set_id"]): (s.get("language") or "eng")
+                for s in _sets_cache
+            })
             os.makedirs(os.path.dirname(os.path.abspath(_SETS_CACHE_PATH)), exist_ok=True)
             with open(_SETS_CACHE_PATH, "w", encoding="utf-8") as f:
                 json.dump(_sets_cache, f)
@@ -211,9 +220,9 @@ def _api_set_id_for(local_id: str) -> str | None:
         "sma":    "2594",   # Hidden Fates: Shiny Vault
         "smp":    "1861",   # SM Promos
         # SV subsets
-        "sv8pt5": "-234",   # Prismatic Evolutions (Extended Art)
-        "sv9":    "-234",   # Prismatic Evolutions (Extended Art)
-        "sv10":   "-232",   # Journey Together (Extended Art)
+        "sv8pt5": "23821",  # Prismatic Evolutions (180 cards)
+        "sv9":    "24073",  # Journey Together (190 cards)
+        "sv10":   "24269",  # Destined Rivals (244 cards)
         "sve":    "22873",  # SV Energy (within main SV base set)
         "zsv10pt5":"17688", # Crown Zenith (alt code)
         "rsv10pt5":"17688", # Crown Zenith (alt code)
@@ -555,6 +564,9 @@ def get_pokewallet_prices(card_name: str, card_local_id: str | None = None) -> l
         elif cname.startswith(name_lower): s += 5
         elif name_lower in cname:          s += 2
         if set_hint and set_hint in cset:  s += 8
+        # Penalise non-English sets — Japanese cards should never beat English ones
+        if _set_language.get(cset_id, "eng") not in ("eng", ""):
+            s -= 20
         # Strong boost when this card is from the exact target set
         if api_set_id and cset_id == api_set_id:
             s += 15
