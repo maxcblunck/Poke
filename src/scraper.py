@@ -15,9 +15,12 @@ except ImportError:
 
 POKEWALLET_BASE_URL  = "https://api.pokewallet.io"
 POKEWALLET_API_KEY   = os.getenv("POKEWALLET_API_KEY", "")
+POKETRACE_BASE_URL   = "https://api.poketrace.com/v1"
+POKETRACE_API_KEY    = os.getenv("POKETRACE_API_KEY", "")
 _SETS_CACHE_PATH     = os.path.join(os.path.dirname(__file__), "..", "data", "pokewallet_sets.json")
 _sets_cache: list | None = None
 _set_language: dict[str, str] = {}   # set_id → language, populated alongside _sets_cache
+_poketrace_id_cache: dict[str, str | None] = {}   # card_local_id → PokeTrace UUID
 
 
 def _get_pokewallet_sets() -> list:
@@ -706,49 +709,162 @@ def get_pokewallet_prices(card_name: str, card_local_id: str | None = None) -> l
     return results
 
 
+def _poketrace_api_key() -> str:
+    return os.environ.get("POKETRACE_API_KEY", "") or POKETRACE_API_KEY
+
+
+def _poketrace_find_card(card_name: str, card_local_id: str | None) -> str | None:
+    """Return PokeTrace UUID for a card, or None if not found. Results are cached."""
+    cache_key = card_local_id or card_name
+    if cache_key in _poketrace_id_cache:
+        return _poketrace_id_cache[cache_key]
+
+    key = _poketrace_api_key()
+    if not key:
+        return None
+
+    # Strip set suffix from display name e.g. "Charizard (Base Set)" → "Charizard"
+    search_name = re.sub(r"\s*\(.*?\)\s*$", "", card_name).strip()
+
+    # Extract card number from local id e.g. "me2-125" → "125"
+    card_number = None
+    if card_local_id and "-" in card_local_id:
+        raw = card_local_id.rsplit("-", 1)[-1]
+        m = re.match(r"(\d+)", raw)
+        if m:
+            card_number = m.group(1)
+
+    def _search(params: dict) -> str | None:
+        try:
+            r = requests.get(
+                f"{POKETRACE_BASE_URL}/cards",
+                headers={"X-API-Key": key},
+                params=params,
+                timeout=10,
+            )
+            if r.status_code != 200:
+                return None
+            items = r.json().get("data", [])
+            return items[0]["id"] if items else None
+        except Exception:
+            return None
+
+    # Try name + number first, then name only
+    uid = None
+    if card_number:
+        uid = _search({"search": search_name, "card_number": card_number, "limit": 5})
+    if not uid:
+        uid = _search({"search": search_name, "limit": 10})
+
+    _poketrace_id_cache[cache_key] = uid
+    return uid
+
+
+def get_poketrace_history(card_name: str, card_local_id: str | None = None) -> list[dict]:
+    """
+    Fetch NM price history from PokeTrace (last 90 days, daily aggregates).
+    Returns a list of price dicts compatible with analyze_card(), most recent first.
+    Each entry has a real date so the trend regression works properly.
+    """
+    uid = _poketrace_find_card(card_name, card_local_id)
+    if not uid:
+        return []
+
+    key = _poketrace_api_key()
+    try:
+        r = requests.get(
+            f"{POKETRACE_BASE_URL}/cards/{uid}/prices/NEAR_MINT/history",
+            headers={"X-API-Key": key},
+            params={"period": "90d", "limit": 50},
+            timeout=10,
+        )
+        if r.status_code != 200:
+            return []
+        entries = r.json().get("data", [])
+    except Exception:
+        return []
+
+    results = []
+    for e in entries:
+        avg = e.get("avg")
+        if not avg:
+            continue
+        # PokeTrace dates are ISO strings like "2026-05-28"
+        raw_date = e.get("date", "")
+        try:
+            d = datetime.date.fromisoformat(raw_date[:10])
+            date_str = d.strftime("%b %d, %Y")
+        except Exception:
+            date_str = raw_date
+
+        results.append({
+            "title":       f"{card_name} [PokeTrace]",
+            "price":       f"${avg:.2f}",
+            "date_sold":   date_str,
+            "source":      "poketrace",
+            "data_source": "live",
+            "market_price": avg,
+            "low_price":    e.get("low"),
+            "high_price":   e.get("high"),
+            "sale_count":   e.get("saleCount"),
+        })
+
+    # Most recent first
+    results.sort(key=lambda x: x["date_sold"], reverse=True)
+    return results
+
+
 def get_card_prices(card_name: str, card_local_id: str | None = None) -> list[dict]:
     """
     Return price data for a Pokemon card.
 
     Priority:
-      1. PokéWallet API  — real TCGPlayer market prices
-      2. eBay scraper    — live sold listings (often blocked client-side)
-      3. Simulated       — valuator-anchored prices with ±20% variance
+      1. PokéWallet API  — current TCGPlayer market price + all variants (display)
+         + PokeTrace API — 90-day NM sales history (trend / analysis)
+      2. Simulated       — valuator-anchored prices with ±20% variance
 
     Returns a list of dicts with keys:
-      title, price, date_sold, source, sales_volume
+      title, price, date_sold, source, data_source,
+      market_price, low_price, high_price, all_variants  (PokéWallet metadata
+      is merged onto the first PokeTrace entry so the UI still has variants).
     """
-    # 1. PokéWallet
+    # 1a. PokéWallet — current market price + variant selector data
     try:
         pw = get_pokewallet_prices(card_name, card_local_id)
     except Exception:
         pw = []
 
+    pw_meta = pw[0] if pw else {}   # market_price, all_variants, etc.
+
+    # 1b. PokeTrace — real 90-day NM sales history for trend analysis
+    try:
+        pt = get_poketrace_history(card_name, card_local_id)
+    except Exception:
+        pt = []
+
+    if len(pt) >= 5:
+        # Merge PokéWallet display metadata onto the first PokeTrace entry
+        # so app.py can still show market price, variants, etc.
+        pt[0].update({
+            "source":        "pokewallet",   # keeps the "API Live" badge
+            "market_price":  pw_meta.get("market_price") or pt[0].get("market_price"),
+            "low_price":     pw_meta.get("low_price")    or pt[0].get("low_price"),
+            "high_price":    pw_meta.get("high_price")   or pt[0].get("high_price"),
+            "mid_price":     pw_meta.get("mid_price"),
+            "sub_type_name": pw_meta.get("sub_type_name", ""),
+            "all_variants":  pw_meta.get("all_variants", []),
+        })
+        for entry in pt:
+            entry["data_source"] = "live"
+        return pt
+
+    # PokéWallet snapshot only (no PokeTrace data) — trend will show "no data"
     if len(pw) >= 5:
         for entry in pw:
             entry["data_source"] = "live"
         return pw
 
-    # 2. eBay
-    try:
-        ebay = get_ebay_sold_prices(card_name)
-    except Exception:
-        ebay = []
-
-    if len(ebay) >= 5:
-        return [
-            {
-                "title":        r["title"],
-                "price":        r["price"],
-                "date_sold":    r["date_sold"],
-                "source":       "ebay",
-                "data_source":  "live",
-                "sales_volume": None,
-            }
-            for r in ebay
-        ]
-
-    # 3. Simulated fallback
+    # 2. Simulated fallback
     base_price = _get_base_price(card_name, card_local_id)
     rng        = random.Random(card_name)
     today      = datetime.date.today()

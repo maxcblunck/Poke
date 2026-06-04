@@ -11,6 +11,9 @@ try:
     _pw = st.secrets.get("POKEWALLET_API_KEY", "")
     if _pw:
         os.environ["POKEWALLET_API_KEY"] = _pw
+    _pt = st.secrets.get("POKETRACE_API_KEY", "")
+    if _pt:
+        os.environ["POKETRACE_API_KEY"] = _pt
 except Exception:
     pass  # running locally — .env handles it
 
