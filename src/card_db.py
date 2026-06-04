@@ -1,6 +1,7 @@
 import json
 import os
 import glob
+from src.set_names import get_set_name
 
 # All rarities that are considered "Rare Holo or higher".
 # Common, Uncommon, Rare (non-holo), and Promo are excluded.
@@ -68,17 +69,15 @@ class CardDatabase:
         files = sorted(glob.glob(pattern))
 
         for filepath in files:
-            # Derive the set name from the filename without extension
-            # e.g. "/path/to/base1.json" → "base1"
-            set_name = os.path.splitext(os.path.basename(filepath))[0]
+            set_code = os.path.splitext(os.path.basename(filepath))[0]
+            set_name = get_set_name(set_code)   # human-readable, e.g. "Base Set"
 
             with open(filepath, encoding="utf-8") as f:
                 cards = json.load(f)
 
-            # Stamp each card with its set name so callers never need to
-            # cross-reference the filename themselves
             for card in cards:
                 card["set_name"] = set_name
+                card["set_code"] = set_code     # keep raw code for API lookups
 
             self._cards.extend(cards)
 
@@ -102,6 +101,7 @@ class CardDatabase:
                 results.append({
                     "name":     card.get("name"),
                     "set_name": card.get("set_name"),
+                    "set_code": card.get("set_code"),
                     "number":   card.get("number"),
                     "rarity":   card.get("rarity"),
                 })
@@ -121,6 +121,7 @@ class CardDatabase:
                 results.append({
                     "name":     card.get("name"),
                     "set_name": card.get("set_name"),
+                    "set_code": card.get("set_code"),
                     "number":   card.get("number"),
                     "rarity":   card.get("rarity"),
                 })
