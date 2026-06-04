@@ -195,6 +195,60 @@ def _api_set_id_for(local_id: str) -> str | None:
         # Celebrations (2021)
         "cel25":  "2867",   # Celebrations
         "cel25c": "2931",   # Celebrations: Classic Collection
+        # SWSH subsets & Trainer Galleries
+        "swsh35":     "2685",   # Champion's Path
+        "swsh45":     "2754",   # Shining Fates
+        "swsh9tg":    "3020",   # Brilliant Stars Trainer Gallery
+        "swsh10tg":   "3068",   # Astral Radiance Trainer Gallery
+        "swsh11tg":   "3172",   # Lost Origin Trainer Gallery
+        "swsh12tg":   "17674",  # Silver Tempest Trainer Gallery
+        "swsh12pt5":  "17688",  # Crown Zenith
+        "swsh12pt5gg":"17689",  # Crown Zenith: Galarian Gallery
+        # SM subsets
+        "sm35":   "2480",   # Hidden Fates
+        "sm75":   "2295",   # Dragon Majesty
+        "sm115":  "2054",   # Shining Legends
+        "sma":    "2594",   # Hidden Fates: Shiny Vault
+        "smp":    "1861",   # SM Promos
+        # SV subsets
+        "sv8pt5": "-234",   # Prismatic Evolutions (Extended Art)
+        "sv9":    "-234",   # Prismatic Evolutions (Extended Art)
+        "sv10":   "-232",   # Journey Together (Extended Art)
+        "sve":    "22873",  # SV Energy (within main SV base set)
+        "zsv10pt5":"17688", # Crown Zenith (alt code)
+        "rsv10pt5":"17688", # Crown Zenith (alt code)
+        # Promo sets
+        "basep":  "-193",   # Wizards Black Star Promos
+        "bp":     "-193",   # Wizards Black Star Promos
+        "np":     "1423",   # Nintendo Promos
+        "hsp":    "1453",   # HGSS Promos
+        "xyp":    "1451",   # XY Promos
+        # POP Series
+        "pop1":   "1422",   # POP Series 1
+        "pop2":   "1447",   # POP Series 2
+        "pop3":   "1442",   # POP Series 3
+        "pop4":   "1452",   # POP Series 4
+        "pop5":   "1439",   # POP Series 5
+        "pop6":   "1432",   # POP Series 6
+        "pop7":   "1414",   # POP Series 7
+        "pop8":   "1450",   # POP Series 8
+        "pop9":   "1446",   # POP Series 9
+        # McDonald's promos
+        "mcd21":  "2782",   # McDonald's 25th Anniversary
+        "mcd22":  "3150",   # McDonald's 2022
+        # Special sets
+        "det1":   "2409",   # Detective Pikachu
+        "dv1":    "1426",   # Dragon Vault
+        "xy0":    "1522",   # Kalos Starter Set
+        "me2":    "-233",   # Extended Art: Mega Evolution
+        "me2pt5": "24448",  # ME02: Phantasmal Flames
+        "me3":    "24587",  # ME03: Perfect Order
+        "me4":    "-233",   # Extended Art: Mega Evolution
+        # Trainer Kits
+        "tk1a":   "-178",   # BW Trainer Kit
+        "tk1b":   "-178",   # BW Trainer Kit
+        "tk2a":   "-9",     # XY BREAKpoint Promos
+        "tk2b":   "-9",     # XY BREAKpoint Promos
     }
     if set_code in _KNOWN:
         return _KNOWN[set_code]
