@@ -6,12 +6,12 @@ import streamlit as st
 
 # ── Inject Streamlit Cloud secrets into os.environ BEFORE importing scraper ──
 # On Streamlit Cloud, API keys live in st.secrets (set via the dashboard).
-# The scraper reads os.getenv() so we copy secrets across here, before any
-# module-level os.getenv() calls run during import.
+# We inject them into os.environ here so the scraper's os.getenv() calls
+# find them regardless of module import order.
 try:
-    for _k, _v in st.secrets.items():
-        if isinstance(_v, str):
-            os.environ.setdefault(_k, _v)
+    _pw = st.secrets.get("POKEWALLET_API_KEY", "")
+    if _pw:
+        os.environ["POKEWALLET_API_KEY"] = _pw
 except Exception:
     pass  # running locally — .env handles it
 

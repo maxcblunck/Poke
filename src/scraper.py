@@ -477,8 +477,8 @@ def get_ebay_sold_prices(card_name: str) -> list[dict]:
 
 
 def _pokewallet_api_key() -> str:
-    """Return the PokéWallet API key, preferring the module-level variable."""
-    return POKEWALLET_API_KEY or os.environ.get("POKEWALLET_API_KEY", "")
+    """Return the PokéWallet API key, always reading live from os.environ."""
+    return os.environ.get("POKEWALLET_API_KEY", "") or POKEWALLET_API_KEY
 
 
 def get_pokewallet_prices(card_name: str, card_local_id: str | None = None) -> list[dict]:
