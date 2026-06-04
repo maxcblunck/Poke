@@ -94,6 +94,37 @@ _SUFFIX_RE = re.compile(
 # Format:  _SET_PULL_RATES[set_code][rarity] = packs_per_any_of_that_rarity
 # ---------------------------------------------------------------------------
 _SET_PULL_RATES: dict[str, dict[str, float]] = {
+    # ── Mega Evolution era ────────────────────────────────────────────
+    "me1": {   # Blazing Skies (Sep 2025) — ThePriceDex community sample
+        "Double Rare":                 5.0,
+        "Illustration Rare":           9.0,
+        "Ultra Rare":                 12.0,
+        "Special Illustration Rare": 101.0,
+        "Mega Hyper Rare":          1260.0,
+    },
+    # me2 entry is below in its own block
+    "me2pt5": {   # Ascended Heroes — introduces Mega Attack Rare tier
+        "Double Rare":                 5.0,
+        "Illustration Rare":           9.0,
+        "Ultra Rare":                 21.0,
+        "Mega Attack Rare":           29.0,
+        "Special Illustration Rare":  70.0,
+        "Mega Hyper Rare":           540.0,
+    },
+    "me3": {   # Perfect Order (Mar 2026) — ThePriceDex
+        "Double Rare":                 5.0,
+        "Illustration Rare":           9.0,
+        "Ultra Rare":                 12.0,
+        "Special Illustration Rare":  81.0,
+        "Mega Hyper Rare":          1786.0,
+    },
+    "me4": {   # Chaos Rising (May 2026) — ThePriceDex
+        "Double Rare":                 5.0,
+        "Illustration Rare":           9.0,
+        "Ultra Rare":                 12.0,
+        "Special Illustration Rare":  90.0,
+        "Mega Hyper Rare":          1100.0,
+    },
     # ── Scarlet & Violet era ──────────────────────────────────────────
     "sv1": {
         "Hyper Rare": 54.1, "Special Illustration Rare": 31.7,
@@ -160,6 +191,11 @@ _SET_PULL_RATES: dict[str, dict[str, float]] = {
         "Ultra Rare": 15.3,  "Illustration Rare": 11.8,
         "Double Rare": 4.9,  "Rare Holo": 1.4,
     },
+    "sv10": {     # Destined Rivals (May 2025) — ThePriceDex
+        "Hyper Rare": 149.3, "Special Illustration Rare": 94.3,
+        "Ultra Rare": 15.6,  "Illustration Rare": 12.1,
+        "Double Rare": 5.0,
+    },
     # ── Sword & Shield era ───────────────────────────────────────────
     # ── Mega Evolution sets ───────────────────────────────────────────
     "me2": {   # Phantasmal Flames (Nov 2025) — rates from TCGplayer 5,000-pack sample
@@ -173,7 +209,38 @@ _SET_PULL_RATES: dict[str, dict[str, float]] = {
     "swsh1": {
         "Rare Secret": 109.9, "Rare Rainbow": 81.3,
         "Ultra Rare": 26.7,   "Rare Holo VMAX": 45.5,
-        "Rare Holo V": 7.0,   "Rare Holo": 5.5,   "Rare": 1.7,
+        "Rare Holo V": 7.0,   "Rare Holo": 5.5,
+    },
+    "swsh2": {    # Rebel Clash (May 2020) — ThePriceDex
+        "Rare Secret": 105.3, "Rare Rainbow": 66.7,
+        "Ultra Rare": 26.6,   "Rare Holo VMAX": 29.4,
+        "Rare Holo V": 7.9,   "Rare Holo": 5.5,
+    },
+    "swsh3": {    # Darkness Ablaze (Aug 2020) — ThePriceDex
+        "Rare Secret": 114.9, "Rare Rainbow": 84.0,
+        "Ultra Rare": 26.0,   "Rare Holo VMAX": 26.0,
+        "Rare Holo V": 7.9,   "Rare Holo": 5.5,
+    },
+    "swsh4": {    # Vivid Voltage (Nov 2020) — introduces Amazing Rare
+        "Rare Secret": 90.1,  "Rare Rainbow": 78.7,
+        "Ultra Rare": 25.2,   "Rare Holo VMAX": 23.3,
+        "Amazing Rare": 17.5, "Rare Holo V": 7.9,
+        "Rare Holo": 5.5,
+    },
+    "swsh5": {    # Battle Styles (Mar 2021) — ThePriceDex
+        "Rare Secret": 117.0, "Rare Rainbow": 93.6,
+        "Ultra Rare": 27.4,   "Rare Holo VMAX": 24.8,
+        "Rare Holo V": 12.4,  "Rare Holo": 5.5,
+    },
+    "swsh6": {    # Chilling Reign (Jun 2021) — ThePriceDex
+        "Rare Secret": 100.0, "Rare Rainbow": 96.2,
+        "Ultra Rare": 25.0,   "Rare Holo VMAX": 23.7,
+        "Rare Holo V": 12.7,  "Rare Holo": 5.5,
+    },
+    "swsh7": {    # Evolving Skies (Aug 2021) — ThePriceDex
+        "Rare Secret": 109.9, "Rare Rainbow": 87.7,
+        "Ultra Rare": 25.8,   "Rare Holo VMAX": 17.9,
+        "Rare Holo V": 9.5,   "Rare Holo": 5.5,
     },
     "swsh35": {   # Champion's Path
         "Rare Secret": 75.8,  "Rare Rainbow": 63.7,
@@ -207,6 +274,13 @@ _SET_PULL_RATES: dict[str, dict[str, float]] = {
         "Ultra Rare": 25.6,   "Rare Holo VSTAR": 26.4,
         "Rare Holo V": 8.6,   "Rare Holo": 5.6,   "Rare": 1.7,
         "Trainer Gallery Rare Holo": 11.7,
+    },
+    "swsh12": {   # Silver Tempest (Nov 2022) — introduces VSTAR + Trainer Gallery
+        "Rare Secret": 106.4, "Rare Rainbow": 79.4,
+        "Ultra Rare": 27.0,   "Rare Holo VSTAR": 31.4,
+        "Rare Holo VMAX": 188.2, "Radiant Rare": 19.6,
+        "Rare Holo V": 8.7,   "Rare Holo": 5.5,
+        "Trainer Gallery Rare Holo": 12.0,
     },
     "swsh12pt5": {  # Crown Zenith
         "Rare Secret": 133.3, "Rare Rainbow": 35.1,
@@ -257,6 +331,9 @@ _ERA_PULL_RATES: dict[tuple, float] = {
     ("recent",    "Rare Secret"):          120.0,
     ("recent",    "Trainer Gallery Rare Holo"): 18.0,
     ("recent",    "Mega Hyper Rare"):         1260.0,
+    ("recent",    "Mega Attack Rare"):          29.0,
+    ("recent",    "Amazing Rare"):             17.5,
+    ("recent",    "Radiant Rare"):             19.6,
 }
 _PULL_RATE_DEFAULT = 6.0
 
