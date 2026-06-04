@@ -290,6 +290,83 @@ hr { border-color: #2a2d45 !important; }
 
 /* Dataframe */
 [data-testid="stDataFrame"] { border: 1px solid #2a2d45; border-radius: 8px; }
+
+/* ── Sidebar widget labels — retro font ── */
+[data-testid="stSidebar"] .stMultiSelect label,
+[data-testid="stSidebar"] .stNumberInput label,
+[data-testid="stSidebar"] .stRadio > label,
+[data-testid="stSidebar"] .stSelectbox label {
+    font-family: 'Press Start 2P', monospace !important;
+    font-size: 0.46rem !important;
+    color: #FFDE00 !important;
+    letter-spacing: 0.5px !important;
+    line-height: 2.2 !important;
+}
+
+/* ── Multiselect container — dark ── */
+[data-testid="stSidebar"] div[data-baseweb="select"] > div:first-child {
+    background: #161828 !important;
+    border: 1px solid #2a2d45 !important;
+    border-radius: 6px !important;
+}
+[data-testid="stSidebar"] div[data-baseweb="select"] input {
+    color: #e8e8e8 !important;
+    background: transparent !important;
+}
+
+/* Selected tag chips inside multiselect */
+[data-testid="stSidebar"] [data-baseweb="tag"] {
+    background: #1e2035 !important;
+    border: 1px solid #FFDE00 !important;
+    border-radius: 4px !important;
+}
+[data-testid="stSidebar"] [data-baseweb="tag"] span {
+    color: #FFDE00 !important;
+    font-size: 0.62rem !important;
+}
+[data-testid="stSidebar"] [data-baseweb="tag"] [role="presentation"] {
+    color: #FFDE00 !important;
+}
+
+/* ── Number input — dark ── */
+[data-testid="stSidebar"] [data-testid="stNumberInput"] input {
+    background: #161828 !important;
+    border: 1px solid #2a2d45 !important;
+    color: #e8e8e8 !important;
+    border-radius: 6px !important;
+}
+[data-testid="stSidebar"] [data-testid="stNumberInput"] button {
+    background: #1e2035 !important;
+    border-color: #2a2d45 !important;
+    color: #FFDE00 !important;
+}
+
+/* ── Radio options — Inter (readable at small sizes) ── */
+[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label {
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.78rem !important;
+    color: #e8e8e8 !important;
+}
+
+/* ── Global dropdown popover — dark ── */
+ul[data-baseweb="menu"] {
+    background-color: #161828 !important;
+    border: 1px solid #2a2d45 !important;
+}
+ul[data-baseweb="menu"] li {
+    background-color: #161828 !important;
+    color: #e8e8e8 !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.8rem !important;
+}
+ul[data-baseweb="menu"] li:hover,
+ul[data-baseweb="menu"] li[aria-selected="true"] {
+    background-color: #1e2035 !important;
+    color: #FFDE00 !important;
+}
+
+/* Checkbox inside multiselect dropdown */
+ul[data-baseweb="menu"] svg { color: #FFDE00 !important; }
 </style>
 """, unsafe_allow_html=True)
 
