@@ -524,11 +524,17 @@ def analyze_card(
     std_dev = statistics.stdev(parsed)
 
     # 3. Trend — linear regression over the last 10 price points (or all if fewer).
-    # Requires at least 6 distinct prices to be meaningful; if all prices are
-    # identical (e.g. single API snapshot padded to 5) mark as "no data".
+    # PokéWallet returns a single-day snapshot: [market, low, mid, high, market].
+    # Treating those as sequential sales produces a nonsensical trend (e.g. a
+    # card with high=$10,000 appears to have "fallen 33%" from its high to its
+    # market price). Detect a snapshot by checking whether all dates are the
+    # same — if so there are no real historical sales to regress over.
+    dates   = {l.get("date_sold") for l in prices_list if l.get("date_sold")}
+    sources = {l.get("source") for l in prices_list}
+    is_snapshot = len(dates) <= 1 and "pokewallet" in sources
+
     trend_window = parsed[:10]
-    if len(set(trend_window)) < 3:
-        # All prices are the same — single API snapshot, no trend possible
+    if is_snapshot or len(set(trend_window)) < 3:
         trend     = "no data"
         trend_pct = 0.0
     else:
