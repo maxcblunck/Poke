@@ -439,7 +439,7 @@ def rec_badge(rec: str) -> str:
     classes = {
         "Strong Buy":  "badge-strong-buy",
         "Buy":         "badge-buy",
-        "Fair Value":  "badge-fair",
+        "Hold":        "badge-fair",
         "Sell":        "badge-sell",
         "Strong Sell": "badge-strong-sell",
     }
@@ -452,12 +452,12 @@ def score_bar(score) -> str:
         return "<p style='color:#6b7280;font-size:0.8rem;'>No score</p>"
     pct = (score + 100) / 200 * 100
     pct = max(0, min(100, pct))
-    if score >= 30:
-        color = "linear-gradient(90deg,#15803d,#22c55e)"
-    elif score >= -30:
-        color = "linear-gradient(90deg,#854d0e,#eab308)"
+    if score <= -25:
+        color = "linear-gradient(90deg,#15803d,#22c55e)"   # green  = undervalued / buy
+    elif score < 25:
+        color = "linear-gradient(90deg,#854d0e,#eab308)"   # amber  = hold
     else:
-        color = "linear-gradient(90deg,#7f1d1d,#ef4444)"
+        color = "linear-gradient(90deg,#7f1d1d,#ef4444)"   # red    = overvalued / sell
     sign = "+" if score >= 0 else ""
     return f"""
     <div class="score-wrap">
@@ -840,7 +840,7 @@ def run_scan(signal, rarities, sets, limit, highest_first):
             time.sleep(0.5)
     progress.empty()
 
-    flagged = [r for r in results if (r.get("recommendation") or "").lower().startswith(signal.lower())]
+    flagged = [r for r in results if signal.lower() in (r.get("recommendation") or "").lower()]
     flagged.sort(key=lambda r: r.get("composite_score") or 0, reverse=highest_first)
 
     a, b, c_ = st.columns(3)

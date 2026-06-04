@@ -528,17 +528,17 @@ def analyze_card(
 
     composite_score = round(comp_a + comp_b + comp_c + comp_d + comp_e + comp_f + comp_h + variant_comp_bonus, 1)
 
-    # Recommendation
-    if composite_score > 60:
-        rec = "Strong Buy"
-    elif composite_score > 30:
-        rec = "Buy"
-    elif composite_score >= -30:
-        rec = "Fair Value"
-    elif composite_score >= -60:
-        rec = "Sell"
-    else:
+    # Recommendation — positive score = overvalued (sell), negative = undervalued (buy)
+    if composite_score >= 60:
         rec = "Strong Sell"
+    elif composite_score >= 25:
+        rec = "Sell"
+    elif composite_score > -25:
+        rec = "Hold"
+    elif composite_score > -60:
+        rec = "Buy"
+    else:
+        rec = "Strong Buy"
 
     return {
         "card_name":         card_name,
