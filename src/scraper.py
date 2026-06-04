@@ -249,6 +249,25 @@ def _api_set_id_for(local_id: str) -> str | None:
         "tk1b":   "-178",   # BW Trainer Kit
         "tk2a":   "-9",     # XY BREAKpoint Promos
         "tk2b":   "-9",     # XY BREAKpoint Promos
+        # Promo sets (found via PR set_code disambiguation)
+        "bwp":    "1407",   # Black and White Promos
+        "dpp":    "1421",   # Diamond and Pearl Promos
+        "svp":    "22872",  # SV: Scarlet & Violet Promo Cards
+        "swshp":  "2545",   # SWSH: Sword & Shield Promo Cards
+        # McDonald's promos (all years)
+        "mcd11":  "1401",   # McDonald's Promos 2011
+        "mcd12":  "1427",   # McDonald's Promos 2012
+        "mcd14":  "1692",   # McDonald's Promos 2014
+        "mcd15":  "1694",   # McDonald's Promos 2015
+        "mcd16":  "3087",   # McDonald's Promos 2016
+        "mcd17":  "2148",   # McDonald's Promos 2017
+        "mcd18":  "2364",   # McDonald's Promos 2018
+        "mcd19":  "2555",   # McDonald's Promos 2019
+        # Shiny Vault & Generations
+        "swsh45sv": "2781", # Shining Fates: Shiny Vault
+        "g1":       "1728", # Generations
+        # SV Special Energy set
+        "sve":    "22873",  # Part of main SV base set
     }
     if set_code in _KNOWN:
         return _KNOWN[set_code]
