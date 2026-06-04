@@ -13,6 +13,7 @@ Weights sum to 1.0:
 """
 
 import re
+from src.pokemon_popularity import get_popularity_mult
 
 # ---------------------------------------------------------------------------
 # 1. Base price by rarity tier
@@ -49,15 +50,6 @@ BASE_PRICES: dict[str, float] = {
 }
 DEFAULT_BASE_PRICE = 2.00  # unknown rarity — at least worth more than $1
 
-# ---------------------------------------------------------------------------
-# 2. Character popularity tiers (checked via case-insensitive substring match)
-# ---------------------------------------------------------------------------
-_POP_TIERS: list[tuple[float, set[str]]] = [
-    (3.0, {"Charizard", "Pikachu", "Mewtwo"}),
-    (2.0, {"Mew", "Eevee", "Gengar", "Lugia", "Rayquaza", "Umbreon"}),
-    (1.5, {"Blastoise", "Venusaur", "Garchomp", "Dragonite",
-           "Gyarados", "Snorlax", "Alakazam", "Arcanine"}),
-]
 
 # ---------------------------------------------------------------------------
 # 5. Set age multipliers keyed by the alphabetic prefix of the set ID
@@ -90,14 +82,6 @@ _AGE_MAP: dict[str, float] = {
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
-
-def _popularity_mult(card_name: str) -> float:
-    name_lower = card_name.lower()
-    for mult, names in _POP_TIERS:
-        if any(n.lower() in name_lower for n in names):
-            return mult
-    return 1.0
-
 
 def _nostalgia_mult(card: dict) -> float:
     dex = card.get("nationalPokedexNumbers") or []
@@ -159,7 +143,7 @@ def valuate_card(card: dict) -> dict:
     base_price = BASE_PRICES.get(rarity, DEFAULT_BASE_PRICE)
     name       = card.get("name", "")
 
-    pop_mult  = _popularity_mult(name)
+    pop_mult  = get_popularity_mult(name)
     nos_mult  = _nostalgia_mult(card)
     sub_mult  = _subtype_mult(card)
     age_mult  = _age_mult(card)
