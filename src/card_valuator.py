@@ -136,7 +136,7 @@ def valuate_card(card: dict) -> dict:
       base_price          — starting price for the rarity tier
       combined_multiplier — weighted combination of all signals
       simulated_price     — base_price * combined_multiplier
-      desirability_score  — 0-100, normalised against a max of 4.0
+      desirability_score  — 0-100, normalized against a max of 4.0
       breakdown           — individual multiplier values
     """
     rarity     = card.get("rarity", "")

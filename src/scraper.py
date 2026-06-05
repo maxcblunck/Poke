@@ -404,7 +404,7 @@ HEADERS = {
     # Tell the server we can handle compressed responses (standard for browsers)
     "Accept-Encoding": "gzip, deflate, br",
     # Keep-alive prevents the connection from closing after each request,
-    # which is normal browser behaviour
+    # which is normal browser behavior
     "Connection": "keep-alive",
     # Referer makes the search request look like it originated from the eBay
     # homepage rather than appearing out of nowhere
@@ -636,20 +636,20 @@ def get_pokewallet_prices(card_name: str, card_local_id: str | None = None) -> l
     seen_labels: set = set()
     all_variants: list = []
 
-    def _normalise(n: str) -> str:
-        """Normalise name for fuzzy matching: strip suffixes, remove punctuation."""
+    def _normalize(n: str) -> str:
+        """Normalize name for fuzzy matching: strip suffixes, remove punctuation."""
         n = re.sub(r"\s*-\s*\d+/\d+.*$", "", n)           # "Char ex - 006/165" → "Char ex"
         n = re.sub(r"[()]", " ", n)                         # "Feraligatr (Prime)" → "Feraligatr  Prime"
         n = re.sub(r"-(?=[A-Za-z])", " ", n)               # "Xerneas-EX" → "Xerneas EX"
-        return " ".join(n.lower().split())                  # normalise whitespace
+        return " ".join(n.lower().split())                  # normalize whitespace
 
-    name_norm = _normalise(name_lower)
+    name_norm = _normalize(name_lower)
 
     for c in sorted(cards, key=_score, reverse=True):
         info_c   = c.get("card_info") or c
         api_raw  = info_c.get("name", "")
-        api_norm = _normalise(api_raw)
-        # Accept if normalised names match exactly or API name starts with ours
+        api_norm = _normalize(api_raw)
+        # Accept if normalized names match exactly or API name starts with ours
         if not (api_norm == name_norm
                 or api_norm.startswith(name_norm + " ")
                 or api_norm.startswith(name_norm + "-")):

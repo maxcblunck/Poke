@@ -1,5 +1,5 @@
 """
-Fetches 12-month Google Trends search interest for Pokemon, prioritised by
+Fetches 12-month Google Trends search interest for Pokemon, prioritized by
 how many cards each species has in the database (more cards = more relevant
 to the project). Stops early once a full batch of 4 averages below
 STOP_THRESHOLD — at that point the remaining species are all near-zero and

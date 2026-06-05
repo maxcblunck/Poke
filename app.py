@@ -206,7 +206,7 @@ p, span, div, label { font-family: 'Inter', sans-serif !important; }
     color: #FFDE00;
 }
 
-/* ── Streamlit metric value colour override ── */
+/* ── Streamlit metric value color override ── */
 [data-testid="stMetricValue"] {
     color: #FFDE00 !important;
     font-family: 'Press Start 2P', monospace !important;
@@ -375,7 +375,7 @@ ul[data-baseweb="menu"] svg { color: #FFDE00 !important; }
 
 # ── Pokéball background pattern ────────────────────────────────────────────────
 # SVG drawn as a 60×60 tile: outer circle, red top half, white bottom half,
-# centre dividing line, and button circle. All fills/strokes at ~0.06 opacity
+# center dividing line, and button circle. All fills/strokes at ~0.06 opacity
 # so it reads as a barely-there watermark against the dark background.
 _pokeball_svg = (
     "<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60'>"
@@ -400,7 +400,7 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
-# ── Type colour map ─────────────────────────────────────────────────────────────
+# ── Type color map ──────────────────────────────────────────────────────────────
 TYPE_COLORS = {
     "Fire":      "#e25822", "Water":    "#4d9be6", "Grass":    "#5db85d",
     "Lightning": "#f7d716", "Psychic":  "#e96bb0", "Fighting": "#c04a28",
