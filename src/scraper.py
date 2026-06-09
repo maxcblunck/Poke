@@ -1085,6 +1085,8 @@ def _poketrace_find_card(card_name: str, card_local_id: str | None) -> str | Non
             card_number = m.group(1)
 
     is_premium = _is_premium_range(card_local_id) if card_local_id else False
+    # Build exact fraction e.g. "87/86" for IRs so we don't match a Common "87/120"
+    exact_fraction = _format_card_number(card_local_id) if card_local_id else None
 
     try:
         r = requests.get(
@@ -1105,15 +1107,21 @@ def _poketrace_find_card(card_name: str, card_local_id: str | None) -> str | Non
         _poketrace_id_cache[cache_key] = None
         return None
 
-    # Prefer the entry whose cardNumber starts with our target number
-    # e.g. card_number="125" matches "125/094"
+    # Match priority: exact fraction first ("87/86"), then prefix ("87/...")
+    # Exact match is critical for IRs — "87/86" must not match Common "87/120".
     uid = None
     if card_number:
-        for item in items:
-            cn = item.get("cardNumber") or ""
-            if cn.startswith(card_number + "/") or cn == card_number:
-                uid = item["id"]
-                break
+        if exact_fraction:
+            for item in items:
+                if (item.get("cardNumber") or "") == exact_fraction:
+                    uid = item["id"]
+                    break
+        if not uid:
+            for item in items:
+                cn = item.get("cardNumber") or ""
+                if cn.startswith(card_number + "/") or cn == card_number:
+                    uid = item["id"]
+                    break
 
     if not uid:
         # For premium-range cards, don't fall back to items[0] — that entry is
