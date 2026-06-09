@@ -310,6 +310,8 @@ function draw() {
   ctx.fillStyle = '#0f172a';
   ctx.fillRect(0, 0, W, H);
 
+  if (!world) return;
+
   // lanes (back to front)
   for (const lane of [...world.lanes].reverse()) drawLane(lane);
 
