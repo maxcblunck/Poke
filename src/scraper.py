@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import sys
 import random
 import datetime
 import requests
@@ -26,6 +27,8 @@ _set_language: dict[str, str] = {}   # set_id → language, populated alongside 
 _poketrace_id_cache: dict[str, str | None] = {}   # card_local_id → PokeTrace UUID
 _tcg_token_cache: dict = {}            # {"token": str, "expires_at": float}
 _tcg_product_cache: dict[str, int | None] = {}   # card_local_id → TCGPlayer productId
+
+_IR_RARITIES = frozenset({"Illustration Rare", "Special Illustration Rare", "Hyper Rare", "Mega Hyper Rare"})
 
 
 def _get_pokewallet_sets() -> list:
@@ -260,7 +263,8 @@ def _api_set_id_for(local_id: str) -> str | None:
         "me2":    "-233",   # Extended Art: Mega Evolution
         "me2pt5": "24448",  # ME02: Phantasmal Flames
         "me3":    "24587",  # ME03: Perfect Order
-        "me4":    "-233",   # Extended Art: Mega Evolution
+        # me4 (Chaos Rising) intentionally omitted — "-233" is the wrong set ID
+        # (copy-paste from me2). Let the count-based fallback resolve it.
         # Trainer Kits
         "tk1a":   "-178",   # BW Trainer Kit
         "tk1b":   "-178",   # BW Trainer Kit
@@ -320,6 +324,54 @@ def _api_set_id_for(local_id: str) -> str | None:
 
 # Module-level cache so CardDatabase is only loaded once across all calls
 _db = None
+_set_count_cache: dict[str, int] = {}   # set_code → DB card count for that set
+
+
+def _db_set_count(set_code: str) -> int:
+    """Return how many cards the local DB has for set_code (cached)."""
+    if set_code not in _set_count_cache:
+        db = _load_db()
+        if db:
+            _set_count_cache[set_code] = sum(
+                1 for c in db._cards
+                if c.get("id", "").rsplit("-", 1)[0] == set_code
+            )
+        else:
+            _set_count_cache[set_code] = 0
+    return _set_count_cache[set_code]
+
+
+def _composite_cache_key(card_name: str, card_local_id: str | None) -> str:
+    """
+    Build a cache key that encodes set-id, collector number, and rarity so
+    that a Common and an IR of the same Pokémon name never share a cache entry.
+    Example: "me4-88::illustration-rare"
+    """
+    if not card_local_id:
+        return card_name
+    db = _load_db()
+    if db:
+        exact = next((c for c in db._cards if c.get("id") == card_local_id), None)
+        if exact and exact.get("rarity"):
+            rarity_slug = exact["rarity"].lower().replace(" ", "-")
+            return f"{card_local_id}::{rarity_slug}"
+    return card_local_id
+
+
+def _is_premium_range(card_local_id: str) -> bool:
+    """
+    Return True when the collector number exceeds the set's DB card count,
+    meaning the card is a premium variant (IR/SIR/HR) not present in the local DB.
+    """
+    if not card_local_id or "-" not in card_local_id:
+        return False
+    set_code, raw_num = card_local_id.rsplit("-", 1)
+    m = re.match(r"(\d+)", raw_num)
+    if not m:
+        return False
+    num_int   = int(m.group(1))
+    set_total = _db_set_count(set_code)
+    return bool(set_total and num_int > set_total)
 
 
 def _load_db():
@@ -327,8 +379,7 @@ def _load_db():
     global _db
     if _db is None:
         try:
-            import sys as _sys
-            _sys.path.insert(0, os.path.dirname(__file__))
+            sys.path.insert(0, os.path.dirname(__file__))
             from card_db import CardDatabase
             _db = CardDatabase()
         except Exception:
@@ -336,28 +387,69 @@ def _load_db():
     return _db
 
 
+_EXTENDED_RARITIES = frozenset({
+    # Rarities that are always numbered above the base-set print run in every
+    # modern Pokemon TCG set.  Used to derive the denominator for card-number
+    # notation (e.g. "87/86" for the first IR in a 86-card base set).
+    "Illustration Rare",
+    "Special Illustration Rare",
+    "Hyper Rare",
+    "Mega Hyper Rare",
+    "Rare Secret",
+    "Rare Rainbow",
+    "Shiny Ultra Rare",
+})
+
+
+def _base_set_size(set_code: str) -> int:
+    """
+    Return the denominator used in TCGPlayer card-number notation for set_code.
+
+    For sets with secret/extended cards, this equals (lowest extended-rarity
+    collector number − 1).  Example: me4 has its first IR at #87, so the base
+    set size is 86 and IRs are written as "87/86".
+
+    Falls back to the full DB card count for sets with no extended-rarity cards.
+    """
+    db = _load_db()
+    if not db:
+        return 0
+    all_set_cards = [c for c in db._cards
+                     if c.get("id", "").rsplit("-", 1)[0] == set_code]
+    extended_nums = [
+        int(c["number"])
+        for c in all_set_cards
+        if c.get("rarity") in _EXTENDED_RARITIES and str(c.get("number", "")).isdigit()
+    ]
+    if extended_nums:
+        return min(extended_nums) - 1  # e.g. min=87 → base size = 86
+    return len(all_set_cards)
+
+
 def _format_card_number(local_id: str) -> str | None:
     """
-    Convert a local card id like 'base1-4' to the API query format '4/102'
-    by counting how many cards share that set prefix in the local DB.
-    Returns None if the DB isn't available or the format can't be built.
+    Convert a local card id like 'base1-4' to the API query format '4/102'.
+
+    Uses the base-set print-run size (via _base_set_size) as the denominator
+    so that secret rares produce the standard TCGPlayer notation "87/86" rather
+    than "87/122".
     """
     if not local_id or "-" not in local_id:
         return None
     set_code, num = local_id.rsplit("-", 1)
-    db = _load_db()
-    if not db:
-        return None
-    total = sum(1 for c in db._cards
-                if c.get("id", "").rsplit("-", 1)[0] == set_code)
+    total = _base_set_size(set_code)
     return f"{num}/{total}" if total else None
 
 
-def _get_base_price(card_name: str, card_local_id: str | None = None) -> float:
+def _get_base_price(card_name: str, card_local_id: str | None = None) -> float | None:
     """
     Look up the exact card in CardDatabase and return its valuated price.
     Uses card_local_id (e.g. 'swsh6-201') for an exact match when provided,
     falling back to name+set filtering, then a seeded random price.
+
+    Returns None when the card is in the premium-range (collector number exceeds
+    the set's DB card count) and no IR/SIR/HR match can be found — callers must
+    not substitute a Common-card price in that case.
     """
     try:
         db = _load_db()
@@ -373,6 +465,17 @@ def _get_base_price(card_name: str, card_local_id: str | None = None) -> float:
         if exact:
             return valuate_card(exact)["simulated_price"]
 
+        # Card not in DB.  If the collector number exceeds the set's base-run
+        # count, this is a premium variant (IR/SIR/HR).  Returning a same-named
+        # Common's price would be wrong, so return None instead.
+        if _is_premium_range(card_local_id):
+            print(
+                f"[scraper] WARNING: {card_local_id!r} is outside the DB set range"
+                f" (premium variant); refusing to fall back to Common price",
+                file=sys.stderr,
+            )
+            return None
+
     # Slow path: name + set_name filter
     m = re.match(r"^(.*?)\s*\(([^)]+)\)\s*$", card_name)
     name     = m.group(1).strip() if m else card_name
@@ -387,6 +490,17 @@ def _get_base_price(card_name: str, card_local_id: str | None = None) -> float:
 
     if not candidates:
         return random.Random(card_name).uniform(5.0, 500.0)
+
+    # Among same-named candidates, prefer the one whose rarity is in _IR_RARITIES
+    # when the card_local_id already resolved to an IR in the DB (e.g. me4-88).
+    if card_local_id:
+        ir_candidates = [c for c in candidates if c.get("rarity") in _IR_RARITIES]
+        target_id = card_local_id  # e.g. "me4-88"
+        id_match = next((c for c in ir_candidates if c.get("id") == target_id), None)
+        if id_match:
+            return valuate_card(id_match)["simulated_price"]
+        if ir_candidates:
+            return valuate_card(ir_candidates[0])["simulated_price"]
 
     return valuate_card(candidates[0])["simulated_price"]
 
@@ -449,7 +563,7 @@ def _tcgplayer_find_product(card_name: str, card_local_id: str | None = None) ->
     Resolve a TCGPlayer productId for a Pokémon card.
     Results are cached for the process lifetime to avoid redundant lookups.
     """
-    cache_key = card_local_id or card_name
+    cache_key = _composite_cache_key(card_name, card_local_id)
     if cache_key in _tcg_product_cache:
         return _tcg_product_cache[cache_key]
 
@@ -705,12 +819,19 @@ def get_pokewallet_prices(card_name: str, card_local_id: str | None = None) -> l
         raw_number = re.sub(r"[^0-9].*$", "", raw_number) or raw_number
     api_set_id = _api_set_id_for(card_local_id) if card_local_id else None
 
-    # Skip fraction when card number exceeds the set total (e.g. cel25c has 25
-    # cards but Shining Magikarp keeps its original #66 from Neo Revelation).
+    # Skip fraction for legacy-numbered reprints where the collector number comes
+    # from a different set (e.g. cel25c Shining Magikarp #66 in a 25-card set).
+    # Do NOT skip for genuine secret rares — "87/86" IS the correct TCGPlayer
+    # notation when a card's number exceeds the base set size.
     if fraction and raw_number and raw_number.isdigit():
         num, _, total = fraction.partition("/")
         if total.isdigit() and int(raw_number) > int(total):
-            fraction = None
+            _db_ref  = _load_db()
+            _ir_card = next(
+                (c for c in _db_ref._cards if c.get("id") == card_local_id), None
+            ) if (_db_ref and card_local_id) else None
+            if not (_ir_card and _ir_card.get("rarity") in _IR_RARITIES):
+                fraction = None
 
     queries: list[str] = []
     if fraction:
@@ -745,11 +866,23 @@ def get_pokewallet_prices(card_name: str, card_local_id: str | None = None) -> l
     # ── Step 2: score candidates, pick best match ───────────────────
     name_lower = name.lower()
 
+    # Resolve expected rarity from the local DB so the scorer can discriminate
+    # between a Common and an IR of the same Pokémon name.
+    expected_rarity: str | None = None
+    is_premium = _is_premium_range(card_local_id) if card_local_id else False
+    if card_local_id:
+        _db_ref = _load_db()
+        if _db_ref:
+            _exact = next((c for c in _db_ref._cards if c.get("id") == card_local_id), None)
+            if _exact:
+                expected_rarity = _exact.get("rarity")
+
     def _score(c: dict) -> int:
         info      = c.get("card_info") or c
         cname     = info.get("name", "").lower()
         cset      = info.get("set_name", "").lower()
         cset_id   = str(info.get("set_id", ""))
+        crarity   = info.get("rarity", "")
         s = 0
         if cname == name_lower:            s += 10
         elif cname.startswith(name_lower): s += 5
@@ -768,12 +901,41 @@ def get_pokewallet_prices(card_name: str, card_local_id: str | None = None) -> l
                     (set_hint and set_hint in cset)
         if not is_target and any(p in cset for p in _PENALTY):
             s -= 6
+        # Rarity-aware scoring: exact rarity match gets a large boost; returning a
+        # Common when we expected an IR/SIR/HR is heavily penalised.
+        if expected_rarity:
+            if crarity == expected_rarity:
+                s += 12
+            elif expected_rarity in _IR_RARITIES and crarity not in _IR_RARITIES:
+                s -= 15
+        elif is_premium:
+            # Card not in local DB but collector number is above base-run count →
+            # treat as a premium card and prefer IR/SIR/HR API results.
+            # TODO: filter client-side when PokéWallet adds rarity query param.
+            if crarity in _IR_RARITIES:
+                s += 12
+            elif crarity and crarity not in _IR_RARITIES:
+                s -= 15
         return s
 
     best = max(cards, key=_score)
     card_id = best.get("id")
     if not card_id:
         return []
+
+    # IR guard: if we expect an IR/SIR/HR (either from DB or premium-range
+    # detection) but the API best match came back as a Common-tier card, refuse
+    # to return that price rather than silently mis-pricing.
+    _needs_ir = expected_rarity in _IR_RARITIES or is_premium
+    if _needs_ir:
+        best_rarity = (best.get("card_info") or best).get("rarity", "")
+        if best_rarity and best_rarity not in _IR_RARITIES:
+            print(
+                f"[scraper] WARNING: PokéWallet best match for {card_local_id!r}"
+                f" has rarity {best_rarity!r} (expected IR/SIR/HR); returning []",
+                file=sys.stderr,
+            )
+            return []
 
     # ── Step 3: fetch full card detail + pricing ────────────────────
     try:
@@ -903,7 +1065,7 @@ def _poketrace_api_key() -> str:
 
 def _poketrace_find_card(card_name: str, card_local_id: str | None) -> str | None:
     """Return PokeTrace UUID for a card, or None if not found. Results are cached."""
-    cache_key = card_local_id or card_name
+    cache_key = _composite_cache_key(card_name, card_local_id)
     if cache_key in _poketrace_id_cache:
         return _poketrace_id_cache[cache_key]
 
@@ -921,6 +1083,8 @@ def _poketrace_find_card(card_name: str, card_local_id: str | None) -> str | Non
         m = re.match(r"(\d+)", raw)
         if m:
             card_number = m.group(1)
+
+    is_premium = _is_premium_range(card_local_id) if card_local_id else False
 
     try:
         r = requests.get(
@@ -950,7 +1114,18 @@ def _poketrace_find_card(card_name: str, card_local_id: str | None) -> str | Non
             if cn.startswith(card_number + "/") or cn == card_number:
                 uid = item["id"]
                 break
+
     if not uid:
+        # For premium-range cards, don't fall back to items[0] — that entry is
+        # likely a Common or a lower-rarity card from a different set entirely.
+        if is_premium:
+            print(
+                f"[scraper] WARNING: PokeTrace has no exact match for premium card"
+                f" {card_local_id!r} (card_number={card_number!r}); skipping fallback",
+                file=sys.stderr,
+            )
+            _poketrace_id_cache[cache_key] = None
+            return None
         uid = items[0]["id"]
 
     _poketrace_id_cache[cache_key] = uid
@@ -1071,6 +1246,9 @@ def get_card_prices(card_name: str, card_local_id: str | None = None) -> list[di
 
     # 2. Simulated fallback
     base_price = _get_base_price(card_name, card_local_id)
+    if base_price is None:
+        # Premium-range card not in local DB — return empty rather than a Common price.
+        return []
     rng        = random.Random(card_name)
     today      = datetime.date.today()
     results    = []
