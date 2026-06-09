@@ -282,7 +282,7 @@ _pokeball_b64 = base64.b64encode(_pokeball_svg.encode()).decode()
 
 _STATIC = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/"
 _pokedex_imgs = "".join(
-    f'<img src="{_STATIC}{pid}.png" style="width:64px;height:64px;image-rendering:pixelated;opacity:0.12;flex-shrink:0;" />'
+    f'<img src="{_STATIC}{pid}.png" style="width:100%;height:100%;object-fit:contain;image-rendering:pixelated;opacity:0.12;" />'
     for pid in range(1, 152)
 )
 
@@ -293,11 +293,13 @@ POKEBALL_CSS = f"""
 }}
 #pokemon-bg {{
     position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    display: flex;
-    flex-wrap: wrap;
-    align-content: flex-start;
+    top: 0;
+    left: 21rem;
+    width: calc(100% - 21rem);
+    height: 100vh;
+    display: grid;
+    grid-template-columns: repeat(13, 1fr);
+    grid-template-rows: repeat(12, 1fr);
     z-index: 0;
     pointer-events: none;
     overflow: hidden;
