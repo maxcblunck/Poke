@@ -478,6 +478,9 @@ def _null_result(card_name: str) -> dict:
         "popularity_score":  None,
         "scarcity_score":    None,
         "pull_odds_packs":   None,
+        "spread_pct":        None,
+        "avg_velocity":      None,
+        "momentum_pct":      None,
         "composite_score":   None,
         "recommendation":    "Insufficient Data",
     }
@@ -493,9 +496,9 @@ _VARIANT_SCARCITY_FLOOR: dict[str, float] = {
     "shadowless":             72.0,
 }
 _VARIANT_COMPOSITE_BONUS: dict[str, float] = {
-    "1st edition shadowless": 20.0,
-    "1st edition":            15.0,
-    "shadowless":              8.0,
+    "1st edition shadowless": -20.0,
+    "1st edition":            -15.0,
+    "shadowless":              -8.0,
 }
 
 
@@ -508,14 +511,17 @@ def analyze_card(
     """
     Analyze sold listing data and return a valuation dictionary.
 
-    Composite score (-100 to +100) is built from eight components:
-      A  Price vs average      18 % — recent sale vs mean; below = potential bargain
-      B  Trend                 13 % — 5 newest vs 5 oldest sales
-      C  Volatility             9 % — coefficient of variation
-      D  Rarity baseline        5 % — price vs expected range for its rarity tier
-      E  Popularity            25 % — Google Trends 12-month interest (from popularity.csv)
-      F  Scarcity              15 % — set era age + rarity tier
-      H  Pull odds             15 % — avg packs to pull this specific card from a pack
+    Composite score (-100 to +100) is built from ten components:
+      A   Price vs average      14 % — recent sale vs IQR-filtered mean
+      B   Trend                 10 % — linear regression over last 10 data points
+      C   Volatility             6 % — coefficient of variation
+      D   Rarity baseline        5 % — price vs expected range for its rarity tier
+      E   Popularity            18 % — inverted: high demand supports price (not overvalued)
+      F   Scarcity              10 % — flipped: high scarcity justifies price → hold/buy
+      G   Bid-ask spread         7 % — wide spread = uncertain market = sell pressure
+      H   Pull odds              9 % — flipped: hard to pull = supply scarce → hold/buy
+      vel Sale velocity          8 % — low daily sales = oversupplied at this price
+      mom Momentum              13 % — recent-third vs older-avg price deceleration
     """
 
     # 1. Parse prices
@@ -523,12 +529,20 @@ def analyze_card(
     if len(parsed) < 5:
         return _null_result(card_name)
 
-    # 2. Summary stats
-    avg     = statistics.mean(parsed)
-    median  = statistics.median(parsed)
-    low     = min(parsed)
-    high    = max(parsed)
-    std_dev = statistics.stdev(parsed)
+    # 2. Summary stats — IQR-filter outliers before computing mean
+    if len(parsed) >= 6:
+        qs = statistics.quantiles(parsed, n=4)
+        q1, q3 = qs[0], qs[2]
+        iqr = q3 - q1
+        filtered = [p for p in parsed if q1 - 1.5 * iqr <= p <= q3 + 1.5 * iqr] or parsed
+    else:
+        filtered = parsed
+    avg        = statistics.mean(filtered)
+    median     = statistics.median(filtered)
+    low        = min(filtered)
+    high       = max(filtered)
+    std_dev    = statistics.stdev(filtered) if len(filtered) > 1 else 0.0
+    skew_ratio = (avg - median) / avg if avg else 0.0
 
     # 3. Trend — linear regression over the last 10 price points (or all if fewer).
     # PokéWallet returns a single-day snapshot: [market, low, mid, high, market].
@@ -559,9 +573,30 @@ def analyze_card(
         trend_pct = round(-slope / y_mean * 100, 1) if y_mean else 0.0
         trend     = "rising" if trend_pct > 3 else ("falling" if trend_pct < -3 else "stable")
 
+    # 3b. Momentum — recent third vs historical average detects deceleration
+    if len(parsed) >= 9 and not is_snapshot:
+        third        = max(3, len(parsed) // 3)
+        recent_avg   = statistics.mean(parsed[:third])
+        older_avg    = statistics.mean(parsed[third:])
+        momentum_pct = (recent_avg - older_avg) / older_avg * 100 if older_avg else 0.0
+    else:
+        momentum_pct = 0.0
+
     # 4. Volatility
     cv = (std_dev / avg) if avg else 0.0
     volatility = "stable" if cv < 0.15 else ("moderate" if cv < 0.30 else "volatile")
+
+    # 4b. Bid-ask spread — wide spread = uncertain/illiquid market = sell pressure
+    lows_pw  = [l.get("low_price")  for l in prices_list if l.get("low_price")]
+    highs_pw = [l.get("high_price") for l in prices_list if l.get("high_price")]
+    if lows_pw and highs_pw and avg:
+        spread_pct = (statistics.mean(highs_pw) - statistics.mean(lows_pw)) / avg * 100
+    else:
+        spread_pct = None
+
+    # 4c. Sale velocity — avg daily sales from PokeTrace saleCount
+    sale_counts  = [l.get("sale_count") for l in prices_list if l.get("sale_count") is not None]
+    avg_velocity = statistics.mean(sale_counts) if sale_counts else None
 
     # 5. Rarity baseline
     rarity_baseline = None
@@ -591,42 +626,77 @@ def analyze_card(
 
     # ------------------------------------------------------------------
     # Composite score
-    # Weights: A 18%  B 13%  C 9%  D 5%  E 25%  F 15%  H 15% = 100%
+    # Positive = overvalued (Sell), negative = undervalued (Buy)
+    #
+    # Weights: A 14%  B 10%  C 6%  D 5%  E 18%  F 10%  G 7%
+    #          H 9%   vel 8%  mom 13% = 100%
     # ------------------------------------------------------------------
     most_recent = parsed[0]
 
-    # A — price vs average (weight 18 %)
+    # A — price vs average (weight 14%)
+    # Dampen when mean is skewed high by outliers (mean >> median).
     dev_pct = (avg - most_recent) / avg * 100 if avg else 0.0
-    comp_a  = max(-50.0, min(50.0, dev_pct)) * 0.18
+    comp_a  = max(-50.0, min(50.0, dev_pct)) * 0.14
+    if skew_ratio > 0.15:
+        comp_a *= (1.0 - min(skew_ratio, 0.5))
 
-    # B — trend (weight 13 %; neutral when no trend data available)
-    comp_b  = {"falling": 50, "stable": 0, "rising": -50, "no data": 0}.get(trend, 0) * 0.13
+    # B — trend (weight 10%; neutral when no trend data available)
+    comp_b  = {"falling": 50, "stable": 0, "rising": -50, "no data": 0}.get(trend, 0) * 0.10
 
-    # C — volatility (weight 9 %)
-    comp_c  = {"stable": 30, "moderate": 0, "volatile": -30}[volatility] * 0.09
+    # C — volatility (weight 6%)
+    comp_c  = {"stable": 30, "moderate": 0, "volatile": -30}[volatility] * 0.06
 
-    # D — rarity baseline (weight 5 %)
+    # D — rarity baseline (weight 5%)
     comp_d  = {"below range": 50, "within range": 0, "above range": -50,
                None: 0}.get(rarity_baseline, 0) * 0.05
 
-    # E — popularity (weight 25 %)
-    pop_raw = max(-50.0, min(50.0, (pop_score - 15.0) * (50.0 / 85.0)))
-    comp_e  = pop_raw * 0.25
+    # E — popularity (weight 18%)
+    # Inverted: high popularity = sustained demand = price supported (not overvalued).
+    # Unpopular cards (demand weak) push toward sell.
+    pop_raw = max(-50.0, min(50.0, -(pop_score - 50.0) * (50.0 / 85.0)))
+    comp_e  = pop_raw * 0.18
 
-    # F — scarcity (weight 15 %)
+    # F — scarcity (weight 10%)
+    # Flipped: high scarcity justifies high price → push toward hold/buy.
     scar_raw = max(-50.0, min(50.0, (scar_score - 30.0) * (50.0 / 70.0)))
-    comp_f   = scar_raw * 0.15
+    comp_f   = -scar_raw * 0.10
 
-    # H — pull odds (up to 15 %, scaled down for older eras)
-    # Log scale: breakeven at ~20 packs; SIRs at 350-900 packs → near +50.
-    # Era weight: vintage cards get only 10% of this signal since their
-    # prices are driven by secondary market scarcity, not pack openings.
+    # G — bid-ask spread (weight 7%)
+    # Wide spread = uncertain/illiquid market = sell pressure.
+    if spread_pct is not None:
+        spread_raw = max(-50.0, min(50.0, (spread_pct - 30.0) * (50.0 / 60.0)))
+        comp_g = spread_raw * 0.07
+    else:
+        comp_g = 0.0
+
+    # H — pull odds (weight 9%, scaled down for older eras)
+    # Flipped: hard to pull = genuine supply scarcity = price supported.
     pull_raw = max(-50.0, min(50.0,
         (math.log(pull_packs + 1) - math.log(21)) / math.log(17) * 50.0
     ))
-    comp_h  = pull_raw * 0.15 * pull_era_w
+    comp_h  = -pull_raw * 0.09 * pull_era_w
 
-    composite_score = round(comp_a + comp_b + comp_c + comp_d + comp_e + comp_f + comp_h + variant_comp_bonus, 1)
+    # vel — sale velocity (weight 8%)
+    # Low daily sales = few buyers at this price = downward pressure.
+    if avg_velocity is not None:
+        velocity_raw = max(-50.0, min(50.0, (avg_velocity - 2.0) * 12.5))
+        comp_vel = -velocity_raw * 0.08
+    else:
+        comp_vel = 0.0
+
+    # mom — momentum (weight 13%)
+    # Recent prices falling vs historical avg = deteriorating = sell signal.
+    if momentum_pct != 0.0:
+        mom_raw  = max(-50.0, min(50.0, -momentum_pct))
+        comp_mom = mom_raw * 0.13
+    else:
+        comp_mom = 0.0
+
+    composite_score = round(
+        comp_a + comp_b + comp_c + comp_d + comp_e + comp_f
+        + comp_g + comp_h + comp_vel + comp_mom + variant_comp_bonus,
+        1
+    )
 
     # Recommendation — positive score = overvalued (sell), negative = undervalued (buy)
     if composite_score >= 60:
@@ -655,6 +725,9 @@ def analyze_card(
         "popularity_score":  round(pop_score, 1),
         "scarcity_score":    round(scar_score, 1),
         "pull_odds_packs":   round(pull_packs, 1),
+        "spread_pct":        round(spread_pct, 1) if spread_pct is not None else None,
+        "avg_velocity":      round(avg_velocity, 2) if avg_velocity is not None else None,
+        "momentum_pct":      round(momentum_pct, 1),
         "composite_score":   composite_score,
         "recommendation":    rec,
     }
