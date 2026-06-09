@@ -3,486 +3,720 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PokéCross — Pokémon Crossy Road</title>
+<title>PokéCross</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0f172a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 0 24px;
+  font-family: 'Segoe UI', sans-serif;
+  color: #f8fafc;
+  user-select: none;
+}
+#hud {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 8px;
+  font-size: .75rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: #94a3b8;
+}
+#hud strong { color: #f8fafc; }
+#btn-sprites {
+  background: #1e293b;
+  border: 1px solid #475569;
+  color: #94a3b8;
+  padding: 4px 10px;
+  border-radius: 5px;
+  font-size: .7rem;
+  cursor: pointer;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+#btn-sprites:hover { border-color: #22c55e; color: #22c55e; }
 
-  body {
-    background: #0f172a;
-    font-family: 'Segoe UI', sans-serif;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-start;
-    padding-top: 12px;
-    min-height: 100%;
-    overflow: hidden;
-    user-select: none;
-  }
+#wrap { position: relative; border: 2px solid #334155; border-radius: 6px; overflow: hidden; }
+canvas { display: block; }
 
-  #ui-bar {
-    display: flex;
-    gap: 32px;
-    margin-bottom: 8px;
-    font-size: 0.75rem;
-    color: #94a3b8;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-  }
-  #ui-bar span { color: #f8fafc; font-weight: 700; }
+/* overlays */
+.ov {
+  position: absolute; inset: 0;
+  background: rgba(15,23,42,.92);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 14px;
+}
+.ov.hide { display: none; }
+.ov h1 { font-size: 2rem; }
+.ov h2 { font-size: 1.5rem; }
+.ov p  { font-size: .85rem; color: #94a3b8; text-align: center; max-width: 230px; line-height: 1.5; }
+.sc    { font-size: 2.8rem; font-weight: 900; color: #fbbf24; }
+.bl    { font-size: .75rem; color: #64748b; }
+.btn   { background: #22c55e; color: #0f172a; border: none; padding: 11px 30px; border-radius: 6px; font-weight: 700; font-size: .95rem; cursor: pointer; }
+.btn:hover { background: #16a34a; }
 
-  #canvas-wrap {
-    position: relative;
-    border: 2px solid #334155;
-    border-radius: 8px;
-    overflow: hidden;
-  }
+/* dpad */
+#dpad {
+  display: none;
+  margin-top: 10px;
+  gap: 4px;
+  grid-template-columns: repeat(3, 58px);
+  grid-template-rows: repeat(3, 58px);
+}
+@media (pointer: coarse) { #dpad { display: grid; } }
+.db {
+  background: #1e293b; border: 1px solid #475569; border-radius: 8px;
+  font-size: 1.4rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.db:active { background: #334155; }
 
-  canvas { display: block; }
-
-  /* overlay screens */
-  .screen {
-    position: absolute;
-    inset: 0;
-    background: rgba(15,23,42,0.92);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-    color: #f8fafc;
-  }
-  .screen.hidden { display: none; }
-
-  .screen h1 { font-size: 2rem; }
-  .screen h2 { font-size: 1.4rem; }
-  .screen p  { font-size: 0.85rem; color: #94a3b8; text-align: center; max-width: 220px; }
-
-  .btn {
-    background: #22c55e;
-    color: #0f172a;
-    border: none;
-    padding: 10px 28px;
-    border-radius: 6px;
-    font-weight: 700;
-    font-size: 0.9rem;
-    cursor: pointer;
-    letter-spacing: 0.05em;
-  }
-  .btn:hover { background: #16a34a; }
-
-  .score-big { font-size: 2.5rem; font-weight: 900; color: #fbbf24; }
-  .hi-label  { font-size: 0.75rem; color: #64748b; }
-
-  /* mobile d-pad */
-  #dpad {
-    display: none;
-    margin-top: 10px;
-    grid-template-columns: repeat(3, 48px);
-    grid-template-rows: repeat(3, 48px);
-    gap: 4px;
-  }
-  @media (pointer: coarse) { #dpad { display: grid; } }
-
-  .dpad-btn {
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 6px;
-    color: #f8fafc;
-    font-size: 1.2rem;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .dpad-btn:active { background: #334155; }
-  .dpad-center { grid-column: 2; grid-row: 2; background: transparent; border: none; }
+/* sprite manager panel */
+#sprite-panel {
+  display: none;
+  margin-top: 14px;
+  width: 576px;
+  max-width: 98vw;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 16px;
+}
+#sprite-panel.open { display: block; }
+#sprite-panel h3 {
+  font-size: .8rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: #64748b;
+  margin-bottom: 12px;
+}
+.sp-note {
+  font-size: .72rem;
+  color: #64748b;
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+.sp-note span { color: #22c55e; }
+.slots { display: flex; flex-direction: column; gap: 10px; }
+.slot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+.slot-preview {
+  width: 48px; height: 48px;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.8rem;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: #1e293b;
+}
+.slot-preview img { width: 48px; height: 48px; object-fit: contain; }
+.slot-info { flex: 1; min-width: 0; }
+.slot-label { font-size: .8rem; font-weight: 600; color: #e2e8f0; }
+.slot-key   { font-size: .7rem; color: #475569; margin-top: 2px; font-family: monospace; }
+.slot-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.sp-upload {
+  background: #334155; border: none; color: #94a3b8;
+  padding: 6px 10px; border-radius: 4px; font-size: .72rem; cursor: pointer;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.sp-upload:hover { background: #475569; color: #f8fafc; }
+.sp-reset {
+  background: transparent; border: 1px solid #374151; color: #64748b;
+  padding: 5px 8px; border-radius: 4px; font-size: .7rem; cursor: pointer;
+}
+.sp-reset:hover { border-color: #ef4444; color: #ef4444; }
+.sp-warn { font-size: .7rem; color: #f87171; margin-top: 4px; }
 </style>
 </head>
 <body>
 
-<div id="ui-bar">
-  <div>Route <span id="route-num">1</span></div>
-  <div>Distance <span id="dist-val">0</span>m</div>
-  <div>Best <span id="best-val">0</span>m</div>
+<div id="hud">
+  <div>Route <strong id="hR">1</strong></div>
+  <div>Steps <strong id="hS">0</strong></div>
+  <div>Best <strong id="hB">0</strong></div>
+  <button id="btn-sprites">⚙ Sprites</button>
 </div>
 
-<div id="canvas-wrap">
+<div id="wrap">
   <canvas id="c"></canvas>
 
-  <!-- START SCREEN -->
-  <div class="screen" id="screen-start">
+  <div class="ov" id="sStart">
     <div style="font-size:3rem">⚡</div>
     <h1>PokéCross</h1>
-    <p>Help Pikachu cross roads and rivers without getting hit!</p>
-    <p style="margin-top:-8px">Arrow keys / WASD to move</p>
-    <button class="btn" id="btn-start">START GAME</button>
+    <p>Help Pikachu cross roads and rivers!<br>Arrow keys or WASD — one hop at a time.</p>
+    <button class="btn" id="bStart">START GAME</button>
   </div>
 
-  <!-- GAME OVER SCREEN -->
-  <div class="screen hidden" id="screen-over">
+  <div class="ov hide" id="sOver">
     <div style="font-size:2.5rem">💥</div>
     <h2>Game Over!</h2>
-    <div class="score-big" id="over-score">0m</div>
-    <div class="hi-label">BEST: <span id="over-best">0</span>m</div>
-    <button class="btn" id="btn-retry">PLAY AGAIN</button>
+    <div class="sc" id="oScore">0</div>
+    <div class="bl">BEST: <span id="oBest">0</span></div>
+    <button class="btn" id="bRetry">PLAY AGAIN</button>
   </div>
 </div>
 
-<!-- Mobile d-pad -->
 <div id="dpad">
   <div></div>
-  <button class="dpad-btn" id="dp-up">▲</button>
+  <button class="db" id="dU">▲</button>
   <div></div>
-  <button class="dpad-btn" id="dp-left">◀</button>
-  <div class="dpad-center"></div>
-  <button class="dpad-btn" id="dp-right">▶</button>
+  <button class="db" id="dL">◀</button>
   <div></div>
-  <button class="dpad-btn" id="dp-down">▼</button>
+  <button class="db" id="dR">▶</button>
   <div></div>
+  <button class="db" id="dD">▼</button>
+  <div></div>
+</div>
+
+<!-- ── SPRITE MANAGER ───────────────────────────────────────── -->
+<div id="sprite-panel">
+  <h3>Custom Sprites</h3>
+  <p class="sp-note">
+    Upload PNG/JPG/WebP images for each character slot.
+    <span>PNG with transparent background works best.</span>
+    Sprites are saved in your browser and persist between sessions.
+    Recommended size: under 200 KB per image.
+  </p>
+  <div class="slots" id="slots-container">
+    <!-- slots injected by JS -->
+  </div>
 </div>
 
 <script>
-// roundRect polyfill for Safari <15.4
-if (!CanvasRenderingContext2D.prototype.roundRect) {
-  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
-    r = Math.min(r, w / 2, h / 2);
-    this.moveTo(x + r, y);
-    this.lineTo(x + w - r, y);
-    this.quadraticCurveTo(x + w, y, x + w, y + r);
-    this.lineTo(x + w, y + h - r);
-    this.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    this.lineTo(x + r, y + h);
-    this.quadraticCurveTo(x, y + h, x, y + h - r);
-    this.lineTo(x, y + r);
-    this.quadraticCurveTo(x, y, x + r, y);
-    this.closePath();
-  };
-}
-
-// ─── CONFIG ──────────────────────────────────────────────────────────────────
-const TILE   = 48;
-const COLS   = 11;
-const ROWS   = 13;   // visible rows
+// ── constants ──────────────────────────────────────────────────
+const TILE   = 64;
+const COLS   = 9;
+const VIS    = 11;
 const W      = COLS * TILE;
-const H      = ROWS * TILE;
+const H      = VIS  * TILE;
+const HOP_S  = 0.13;
+const BELOW  = 2;
+const MAX_DT = 0.05;
 
-const LANE_TYPES = ['safe','road','road','river','river','safe','road','river','road','road','safe','river'];
-
-// ─── CANVAS ──────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('c');
 canvas.width  = W;
 canvas.height = H;
 const ctx = canvas.getContext('2d');
 
-// ─── STATE ───────────────────────────────────────────────────────────────────
-let state = 'start';   // 'start' | 'play' | 'over'
-let player, world, score, bestScore, stepsTaken;
-bestScore = parseInt(localStorage.getItem('pokecross_best') || '0');
+// ── sprite system ──────────────────────────────────────────────
+const SPRITE_SLOTS = [
+  { key: 'player',   label: 'Player',             fallback: '🐭', desc: 'Main character (Pikachu)' },
+  { key: 'road_sm',  label: 'Road — Car (small)',  fallback: '🚗', desc: 'Small road obstacle' },
+  { key: 'road_lg',  label: 'Road — Truck (large)',fallback: '🚛', desc: 'Large road obstacle' },
+  { key: 'water',    label: 'Water Float',         fallback: '🦕', desc: 'Log / Lapras obstacle' },
+  { key: 'item',     label: 'Collectible',         fallback: '⭐', desc: 'Coins / items (future)' },
+];
+const LS_PREFIX = 'pkcross_spr_';
 
-// ─── LANE DATA ────────────────────────────────────────────────────────────────
-function makeLane(yWorld, type, difficultyMult) {
-  const dir    = Math.random() < 0.5 ? 1 : -1;
-  const baseSpeed = type === 'road'
-    ? (1.2 + Math.random() * 1.0) * difficultyMult
-    : (0.6 + Math.random() * 0.5) * difficultyMult;
-  const speed  = baseSpeed * dir;
-  const gap    = type === 'road' ? 3.5 + Math.random() * 2.5 : 4 + Math.random() * 3;
-  const size   = type === 'road' ? 1 : 2 + Math.floor(Math.random() * 2);  // log width in tiles
-  const count  = Math.floor(COLS / gap) + 2;
-  const obstacles = [];
-  for (let i = 0; i < count; i++) {
-    obstacles.push({
-      x: (i * gap * TILE + Math.random() * TILE * 0.5) % (COLS * TILE * 1.5) - TILE,
-      size,
-    });
+// loaded Image objects, keyed by slot key
+const spriteImgs = {};
+
+function spriteKey(slotKey) { return LS_PREFIX + slotKey; }
+
+function loadAllSprites() {
+  for (const slot of SPRITE_SLOTS) {
+    const data = localStorage.getItem(spriteKey(slot.key));
+    if (data) {
+      const img = new Image();
+      img.src = data;
+      spriteImgs[slot.key] = img;
+    } else {
+      delete spriteImgs[slot.key];
+    }
   }
-  return { yWorld, type, speed, obstacles, gap, size };
 }
 
-function worldLaneAt(yWorld) {
-  // deterministic lane type from world Y
-  const idx = ((yWorld / TILE) % LANE_TYPES.length + LANE_TYPES.length) % LANE_TYPES.length | 0;
-  return LANE_TYPES[idx];
+function saveSprite(slotKey, dataURL) {
+  localStorage.setItem(spriteKey(slotKey), dataURL);
+  const img = new Image();
+  img.src = dataURL;
+  spriteImgs[slotKey] = img;
 }
 
-function initWorld() {
-  player = { x: Math.floor(COLS / 2) * TILE, yWorld: 0, onLog: null, dead: false };
-  world  = { cameraY: 0, lanes: [], maxRowReached: 0 };
-  score  = 0;
-  stepsTaken = 0;
+function removeSprite(slotKey) {
+  localStorage.removeItem(spriteKey(slotKey));
+  delete spriteImgs[slotKey];
+}
 
-  // pre-generate visible lanes; row 0 (bottom) is always safe
-  for (let row = 0; row <= ROWS + 2; row++) {
-    const yW = -row * TILE;
-    const type = row === 0 ? 'safe' : worldLaneAt(yW);
-    const diff = difficultyAt(0);
-    world.lanes.push(makeLane(yW, type, diff));
+loadAllSprites();
+
+// draw a sprite or fall back to emoji text
+function drawSpriteOrEmoji(key, emoji, x, y, w, h, flipH) {
+  const img = spriteImgs[key];
+  if (img && img.complete && img.naturalWidth > 0) {
+    ctx.save();
+    if (flipH) {
+      ctx.translate(x + w, y);
+      ctx.scale(-1, 1);
+      ctx.drawImage(img, 0, 0, w, h);
+    } else {
+      ctx.drawImage(img, x, y, w, h);
+    }
+    ctx.restore();
+  } else {
+    ctx.font = `${Math.round(h * 0.72)}px serif`;
+    ctx.fillText(emoji, x + 2, y + h - Math.round(h * 0.12));
   }
-  world.cameraY = 0;
 }
 
-function difficultyAt(dist) {
-  return 1 + Math.min(dist / 200, 2.0);
+// ── game state ─────────────────────────────────────────────────
+let gState   = 'start';
+let camRow   = 0;
+let score    = 0;
+let best     = +localStorage.getItem('pkx3') || 0;
+let lanes    = {};
+let maxGen   = 0;
+let player   = null;
+let gameTime = 0;
+
+document.getElementById('hB').textContent = best;
+
+// ── lane sequence ──────────────────────────────────────────────
+const SEQ = [
+  'grass','road','road','grass',
+  'water','water','grass',
+  'road','road','road','grass',
+  'water','grass',
+  'road','grass',
+  'water','water','water','grass',
+  'road','road','grass',
+];
+
+function laneTypeAt(row) {
+  if (row <= 1) return 'grass';
+  return SEQ[(row - 2) % SEQ.length];
 }
 
-// ─── RENDERING ────────────────────────────────────────────────────────────────
-const LANE_COLORS = {
-  safe:  '#14532d',
-  road:  '#1e293b',
-  river: '#1e3a5f',
+function diffAt(row) {
+  return 1 + Math.min(row / 40, 2.5);
+}
+
+function makeLane(row) {
+  const type = laneTypeAt(row);
+  if (type === 'grass') return { row, type, obs: [] };
+
+  const diff = diffAt(row);
+  const dir  = Math.random() < 0.5 ? 1 : -1;
+  const obs  = [];
+
+  if (type === 'road') {
+    const count = 2 + Math.floor(Math.random() * 2);
+    const spd   = (85 + Math.random() * 70) * diff * dir;
+    const gap   = W / count;
+    for (let i = 0; i < count; i++) {
+      const big = Math.random() < 0.28;
+      obs.push({ x: i * gap + Math.random() * gap * 0.4, w: big ? TILE * 2 : TILE, spd });
+    }
+  } else {
+    const count = 2 + Math.floor(Math.random() * 2);
+    const spd   = (50 + Math.random() * 45) * diff * dir;
+    const gap   = W / count;
+    for (let i = 0; i < count; i++) {
+      const len = TILE * (2 + Math.floor(Math.random() * 2));
+      obs.push({ x: i * gap + Math.random() * gap * 0.3, w: len, spd });
+    }
+  }
+  return { row, type, obs };
+}
+
+function ensureLanes(upTo) {
+  for (let r = maxGen; r <= upTo; r++) {
+    if (!lanes[r]) lanes[r] = makeLane(r);
+  }
+  if (upTo > maxGen) maxGen = upTo;
+}
+
+// ── coordinate ─────────────────────────────────────────────────
+function rowY(r) {
+  return H - TILE - (r - camRow) * TILE;
+}
+
+// ── init ───────────────────────────────────────────────────────
+function initGame() {
+  lanes    = {};
+  maxGen   = 0;
+  score    = 0;
+  camRow   = -BELOW;
+  gameTime = 0;
+  ensureLanes(VIS + 6);
+
+  const sc = Math.floor(COLS / 2);
+  player = { col: sc, row: 0, x: sc * TILE, fromRow: 0, fromX: sc * TILE, moving: false, hopT: 0, dead: false };
+}
+
+// ── movement ───────────────────────────────────────────────────
+function tryHop(dc, dr) {
+  if (!player || player.moving || player.dead || gState !== 'play') return;
+  const nc = player.col + dc;
+  const nr = player.row + dr;
+  if (nc < 0 || nc >= COLS) return;
+  player.fromRow = player.row;
+  player.fromX   = player.x;
+  player.col     = nc;
+  player.row     = nr;
+  player.moving  = true;
+  player.hopT    = 0;
+  if (nr > score) {
+    score = nr;
+    if (score > best) { best = score; localStorage.setItem('pkx3', best); }
+  }
+}
+
+function easeIO(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
+
+function wrapOb(ob) {
+  const span = W + ob.w + TILE * 2;
+  if (ob.spd > 0 && ob.x > W + ob.w + TILE)      ob.x -= span;
+  if (ob.spd < 0 && ob.x < -ob.w - TILE * 2)     ob.x += span;
+}
+
+// ── collision ──────────────────────────────────────────────────
+function logUnder(px) {
+  const ln = lanes[player.row];
+  if (!ln || ln.type !== 'water') return null;
+  const x  = (px !== undefined ? px : player.x) + TILE * 0.12;
+  const pw = TILE * 0.76;
+  for (const ob of ln.obs) {
+    if (x < ob.x + ob.w - 2 && x + pw > ob.x + 2) return ob;
+  }
+  return null;
+}
+
+function carHit(px) {
+  const ln = lanes[player.row];
+  if (!ln || ln.type !== 'road') return false;
+  const x  = (px !== undefined ? px : player.x) + 10;
+  const pw = TILE - 20;
+  for (const ob of ln.obs) {
+    if (x < ob.x + ob.w - 6 && x + pw > ob.x + 6) return true;
+  }
+  return false;
+}
+
+function kill() {
+  if (!player || player.dead) return;
+  player.dead = true;
+  gState = 'dead';
+  document.getElementById('oScore').textContent = score;
+  document.getElementById('oBest').textContent  = best;
+  document.getElementById('sOver').classList.remove('hide');
+}
+
+function onLand() {
+  const ln = lanes[player.row];
+  if (!ln) return;
+  if (ln.type === 'water' && !logUnder()) { kill(); return; }
+  if (ln.type === 'road'  && carHit())    { kill(); return; }
+}
+
+// ── update ─────────────────────────────────────────────────────
+let prevTs = 0;
+
+function update(ts) {
+  if (gState !== 'play' || !player || player.dead) return;
+  const dt = Math.min((ts - prevTs) / 1000, MAX_DT);
+  prevTs   = ts;
+  gameTime += dt;
+
+  ensureLanes(player.row + VIS + 6);
+
+  const r0 = Math.floor(camRow) - 2;
+  const r1 = r0 + VIS + 6;
+  for (let r = r0; r <= r1; r++) {
+    const ln = lanes[r];
+    if (!ln || ln.type === 'grass') continue;
+    for (const ob of ln.obs) { ob.x += ob.spd * dt; wrapOb(ob); }
+  }
+
+  if (player.moving) {
+    player.hopT += dt;
+    const t = Math.min(player.hopT / HOP_S, 1);
+    player.x = player.fromX + (player.col * TILE - player.fromX) * easeIO(t);
+    if (t >= 1) { player.x = player.col * TILE; player.moving = false; onLand(); }
+  } else {
+    const ln = lanes[player.row];
+    if (ln && ln.type === 'water') {
+      const log = logUnder();
+      if (!log) { kill(); return; }
+      player.x += log.spd * dt;
+      player.col = Math.max(0, Math.min(COLS - 1, Math.round(player.x / TILE)));
+      if (player.x < -TILE * 0.4 || player.x > W - TILE * 0.6) { kill(); return; }
+    }
+    if (ln && ln.type === 'road') {
+      if (carHit()) { kill(); return; }
+    }
+  }
+
+  const targetCam = player.row - BELOW;
+  if (targetCam > camRow) camRow += (targetCam - camRow) * Math.min(dt * 12, 1);
+
+  if (rowY(player.row) > H + TILE * 1.5) { kill(); return; }
+
+  document.getElementById('hS').textContent = score;
+  document.getElementById('hR').textContent = Math.floor(score / 15) + 1;
+  document.getElementById('hB').textContent = best;
+}
+
+// ── draw ───────────────────────────────────────────────────────
+const PAL = {
+  grass: ['#166534','#15803d'],
+  road:  ['#1f2937','#374151'],
+  water: ['#1e40af','#1d4ed8'],
 };
-const LANE_BORDER = {
-  safe:  '#166534',
-  road:  '#334155',
-  river: '#1e40af',
-};
 
-function laneScreenY(lane) {
-  return H - TILE - (lane.yWorld - world.cameraY);
-}
+function draw() {
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 0, W, H);
+  if (gState === 'start' || !player) return;
 
-function drawLane(lane) {
-  const sy = laneScreenY(lane);
-  if (sy < -TILE || sy > H) return;
+  const r0 = Math.floor(camRow) - 1;
+  const r1 = r0 + VIS + 4;
 
-  // background
-  ctx.fillStyle = LANE_COLORS[lane.type];
-  ctx.fillRect(0, sy, W, TILE);
+  for (let r = r0; r <= r1; r++) {
+    const ln = lanes[r];
+    if (!ln) continue;
+    const sy = Math.round(rowY(r));
+    if (sy > H + TILE || sy < -TILE * 2) continue;
 
-  // lane border
-  ctx.fillStyle = LANE_BORDER[lane.type];
-  ctx.fillRect(0, sy + TILE - 1, W, 1);
+    ctx.fillStyle = PAL[ln.type][r & 1];
+    ctx.fillRect(0, sy, W, TILE);
 
-  // grass dots on safe lanes
-  if (lane.type === 'safe') {
-    ctx.font = '14px serif';
-    for (let i = 0; i < COLS; i++) {
-      if ((i + Math.abs(lane.yWorld / TILE | 0)) % 3 === 0) {
-        ctx.fillText('🌿', i * TILE + 10, sy + TILE - 10);
+    if (ln.type === 'road') {
+      ctx.save();
+      ctx.setLineDash([16, 12]);
+      ctx.strokeStyle = 'rgba(251,191,36,0.4)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, sy + TILE / 2); ctx.lineTo(W, sy + TILE / 2); ctx.stroke();
+      ctx.restore();
+    } else if (ln.type === 'water') {
+      const wx = (gameTime * 55) % (W * 2);
+      ctx.fillStyle = 'rgba(147,197,253,0.12)';
+      for (let ox = wx - W * 2; ox < W + W; ox += W) {
+        ctx.fillRect(ox, sy + 7,  W, 7);
+        ctx.fillRect(ox, sy + 38, W, 5);
+      }
+    } else {
+      ctx.font = '13px serif';
+      for (let c = 0; c < COLS; c++) {
+        if ((c * 2 + r) % 3 === 0) ctx.fillText('🌿', c * TILE + 12, sy + TILE - 10);
       }
     }
+
+    for (const ob of ln.obs) {
+      if (ob.x + ob.w < -TILE || ob.x > W + TILE) continue;
+      drawOb(ln.type, ob.x, ob.w, ob.spd, sy);
+    }
+
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.fillRect(0, sy + TILE - 1, W, 1);
   }
 
-  // obstacles / logs
-  for (const ob of lane.obstacles) {
-    const obW  = ob.size * TILE - 4;
-    const wrap = W + ob.size * TILE + TILE * 2;
-    const ox   = ((ob.x % wrap) + wrap) % wrap - TILE;
+  drawPlayer();
+}
 
-    if (lane.type === 'road') {
-      // car body
-      ctx.fillStyle = ob.size === 1 ? '#dc2626' : '#7c3aed';
-      ctx.beginPath();
-      ctx.roundRect(ox + 2, sy + 8, obW, TILE - 16, 6);
-      ctx.fill();
-      // emoji
-      ctx.font = `${TILE - 16}px serif`;
-      ctx.fillText(lane.speed > 0 ? '🚗' : '🚙', ox + 4, sy + TILE - 10);
-    } else {
-      // log
-      ctx.fillStyle = '#92400e';
-      ctx.beginPath();
-      ctx.roundRect(ox + 2, sy + 10, obW, TILE - 20, 8);
-      ctx.fill();
-      ctx.fillStyle = '#78350f';
-      ctx.fillRect(ox + 2, sy + 22, obW, 2);
-      // Lapras on first log segment
-      ctx.font = `${TILE - 12}px serif`;
-      ctx.fillText('🦕', ox + 4, sy + TILE - 8);
-    }
+function drawOb(type, ox, ow, spd, sy) {
+  const flip = spd < 0;
+  if (type === 'road') {
+    const big = ow > TILE;
+    ctx.fillStyle = big ? '#5b21b6' : '#991b1b';
+    ctx.fillRect(ox + 2, sy + 11, ow - 4, TILE - 22);
+    ctx.fillStyle = 'rgba(186,230,253,0.45)';
+    ctx.fillRect(spd > 0 ? ox + ow - 16 : ox + 4, sy + 14, 12, 12);
+    ctx.fillStyle = '#111827';
+    ctx.fillRect(ox + 4,       sy + TILE - 15, 11, 8);
+    ctx.fillRect(ox + ow - 15, sy + TILE - 15, 11, 8);
+
+    const sprKey = big ? 'road_lg' : 'road_sm';
+    const em     = spd > 0 ? (big ? '🚛' : '🚗') : (big ? '🚚' : '🚙');
+    const ex = big ? ox + Math.floor(ow / 2) - 14 : ox + 2;
+    drawSpriteOrEmoji(sprKey, em, ox + 2, sy + 8, ow - 4, TILE - 16, flip);
+
+  } else {
+    ctx.fillStyle = '#92400e';
+    ctx.fillRect(ox + 2, sy + 17, ow - 4, TILE - 34);
+    ctx.fillStyle = '#78350f';
+    const segs = Math.floor(ow / TILE);
+    for (let i = 1; i <= segs; i++) ctx.fillRect(ox + i * TILE - 2, sy + 17, 2, TILE - 34);
+    ctx.fillStyle = '#a16207';
+    ctx.fillRect(ox + 2, sy + 24, ow - 4, 3);
+    drawSpriteOrEmoji('water', '🦕', ox + 4, sy + 12, TILE - 8, TILE - 24, flip);
   }
 }
 
 function drawPlayer() {
-  const sy = H - TILE - (player.yWorld - world.cameraY);
-  ctx.font = `${TILE - 6}px serif`;
-  ctx.fillText('⚡', player.x + 2, sy + TILE - 4);
-  // Pikachu under the lightning
-  ctx.font = `${TILE - 10}px serif`;
-  ctx.fillText('🐭', player.x + 2, sy + TILE - 4);
+  let dx, dy;
+  if (player.moving) {
+    const t  = Math.min(player.hopT / HOP_S, 1);
+    const e  = easeIO(t);
+    dx = player.fromX + (player.col * TILE - player.fromX) * e;
+    dy = rowY(player.fromRow) + (rowY(player.row) - rowY(player.fromRow)) * e
+       - Math.sin(t * Math.PI) * 16;
+  } else {
+    dx = player.x;
+    dy = rowY(player.row);
+  }
+  dx = Math.round(dx);
+  dy = Math.round(dy);
+
+  // ground shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.beginPath();
+  ctx.ellipse(Math.round(player.x) + TILE / 2, Math.round(rowY(player.row)) + TILE - 5, 20, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  drawSpriteOrEmoji('player', '🐭', dx + 2, dy + 4, TILE - 4, TILE - 8, false);
 }
 
-function draw() {
-  ctx.clearRect(0, 0, W, H);
-
-  // sky / bg
-  ctx.fillStyle = '#0f172a';
-  ctx.fillRect(0, 0, W, H);
-
-  if (!world) return;
-
-  // lanes (back to front)
-  for (const lane of [...world.lanes].reverse()) drawLane(lane);
-
-  if (state === 'play' || state === 'over') drawPlayer();
-}
-
-// ─── UPDATE ───────────────────────────────────────────────────────────────────
-let last = 0;
-
-function update(ts) {
-  const dt = Math.min((ts - last) / 1000, 0.1);
-  last = ts;
-
-  if (state !== 'play') return;
-
-  const diff = difficultyAt(score);
-
-  // move obstacles
-  for (const lane of world.lanes) {
-    if (lane.type === 'road' || lane.type === 'river') {
-      for (const ob of lane.obstacles) {
-        ob.x += lane.speed * TILE * dt;
-        // keep x in a consistent range so % arithmetic stays well-defined
-        const wrap = W + ob.size * TILE + TILE * 2;
-        if (ob.x > wrap * 2)  ob.x -= wrap * 2;
-        if (ob.x < -wrap * 2) ob.x += wrap * 2;
-      }
-    }
-  }
-
-  // camera follow (smooth)
-  const targetCam = player.yWorld - (ROWS - 3) * TILE;
-  if (targetCam > world.cameraY) world.cameraY += (targetCam - world.cameraY) * 0.15;
-
-  // generate new lanes ahead of the player
-  const neededTop = world.cameraY - (ROWS + 6) * TILE;
-  let existTop = Math.min(...world.lanes.map(l => l.yWorld));
-  while (existTop > neededTop) {
-    const yW   = existTop - TILE;
-    const type = worldLaneAt(yW);
-    world.lanes.push(makeLane(yW, type, diff));
-    existTop   = yW;
-  }
-  // prune lanes far below camera (memory)
-  const pruneBelow = world.cameraY + (ROWS + 4) * TILE;
-  world.lanes = world.lanes.filter(l => l.yWorld <= pruneBelow);
-
-  // player on log?
-  player.onLog = null;
-  const playerLane = world.lanes.find(l => l.yWorld === player.yWorld);
-
-  function obScreenX(ob) {
-    const wrap = W + ob.size * TILE + TILE * 2;
-    return ((ob.x % wrap) + wrap) % wrap - TILE;
-  }
-
-  if (playerLane && playerLane.type === 'river') {
-    let onAny = false;
-    for (const ob of playerLane.obstacles) {
-      const ox       = obScreenX(ob);
-      const logLeft  = ox + 2;
-      const logRight = ox + ob.size * TILE - 2;
-      if (player.x + 4 >= logLeft && player.x + TILE - 4 <= logRight) {
-        player.onLog = { ob, lane: playerLane };
-        player.x += playerLane.speed * TILE * dt; // carried by log
-        onAny = true;
-        break;
-      }
-    }
-    if (!onAny) die();
-  }
-
-  // car collision
-  if (playerLane && playerLane.type === 'road') {
-    for (const ob of playerLane.obstacles) {
-      const ox = obScreenX(ob);
-      if (player.x + 8 < ox + ob.size * TILE - 4 && player.x + TILE - 8 > ox + 4) {
-        die();
-        break;
-      }
-    }
-  }
-
-  // out of bounds x
-  if (player.x < 0) player.x = 0;
-  if (player.x > (COLS - 1) * TILE) player.x = (COLS - 1) * TILE;
-
-  // fell off screen (camera left them behind)
-  const screenY = H - TILE - (player.yWorld - world.cameraY);
-  if (screenY > H + TILE) die();
-
-  // score = max forward progress
-  const dist = Math.round((-player.yWorld) / TILE) * 5;
-  if (dist > score) score = dist;
-
-  // update HUD
-  document.getElementById('dist-val').textContent = score;
-  document.getElementById('route-num').textContent = Math.floor(score / 50) + 1;
-}
-
-function die() {
-  if (player.dead) return;
-  player.dead = true;
-  state = 'over';
-  if (score > bestScore) {
-    bestScore = score;
-    localStorage.setItem('pokecross_best', bestScore);
-  }
-  document.getElementById('over-score').textContent = score + 'm';
-  document.getElementById('over-best').textContent  = bestScore;
-  document.getElementById('best-val').textContent   = bestScore;
-  document.getElementById('screen-over').classList.remove('hidden');
-}
-
-// ─── MOVEMENT ─────────────────────────────────────────────────────────────────
-function move(dx, dy) {
-  if (state !== 'play' || player.dead) return;
-
-  const nx = player.x + dx * TILE;
-  const ny = player.yWorld + dy * TILE;
-
-  if (nx < 0 || nx >= COLS * TILE) return;
-
-  player.x      = nx;
-  player.yWorld = ny;
-}
-
-// keyboard
-const KEYS = new Set();
+// ── input ──────────────────────────────────────────────────────
+const held = new Set();
 document.addEventListener('keydown', e => {
-  if (state === 'start' && (e.key === ' ' || e.key === 'Enter')) startGame();
-  if (state === 'over'  && (e.key === ' ' || e.key === 'Enter')) startGame();
-
-  if (!KEYS.has(e.key)) {
-    KEYS.add(e.key);
-    if (e.key === 'ArrowUp'    || e.key === 'w') move( 0,  1);
-    if (e.key === 'ArrowDown'  || e.key === 's') move( 0, -1);
-    if (e.key === 'ArrowLeft'  || e.key === 'a') move(-1,  0);
-    if (e.key === 'ArrowRight' || e.key === 'd') move( 1,  0);
-    e.preventDefault();
-  }
+  if (gState === 'start' && (e.key === 'Enter' || e.key === ' ')) { startGame(); return; }
+  if (gState === 'dead'  && (e.key === 'Enter' || e.key === ' ')) { startGame(); return; }
+  if (held.has(e.key)) return;
+  held.add(e.key);
+  if (e.key === 'ArrowUp'    || e.key === 'w') tryHop( 0,  1);
+  if (e.key === 'ArrowDown'  || e.key === 's') tryHop( 0, -1);
+  if (e.key === 'ArrowLeft'  || e.key === 'a') tryHop(-1,  0);
+  if (e.key === 'ArrowRight' || e.key === 'd') tryHop( 1,  0);
+  e.preventDefault();
 });
-document.addEventListener('keyup', e => KEYS.delete(e.key));
+document.addEventListener('keyup', e => held.delete(e.key));
 
-// d-pad
-document.getElementById('dp-up').addEventListener('click',    () => move( 0,  1));
-document.getElementById('dp-down').addEventListener('click',  () => move( 0, -1));
-document.getElementById('dp-left').addEventListener('click',  () => move(-1,  0));
-document.getElementById('dp-right').addEventListener('click', () => move( 1,  0));
+document.getElementById('dU').addEventListener('click', () => tryHop( 0,  1));
+document.getElementById('dD').addEventListener('click', () => tryHop( 0, -1));
+document.getElementById('dL').addEventListener('click', () => tryHop(-1,  0));
+document.getElementById('dR').addEventListener('click', () => tryHop( 1,  0));
+document.getElementById('bStart').addEventListener('click', startGame);
+document.getElementById('bRetry').addEventListener('click', startGame);
 
-// buttons
-document.getElementById('btn-start').addEventListener('click', startGame);
-document.getElementById('btn-retry').addEventListener('click', startGame);
-
-// ─── GAME LOOP ────────────────────────────────────────────────────────────────
-function loop(ts) {
-  update(ts);
-  draw();
-  requestAnimationFrame(loop);
-}
+// ── loop ───────────────────────────────────────────────────────
+function loop(ts) { update(ts); draw(); requestAnimationFrame(loop); }
 
 function startGame() {
-  document.getElementById('screen-start').classList.add('hidden');
-  document.getElementById('screen-over').classList.add('hidden');
-  document.getElementById('best-val').textContent = bestScore;
-  initWorld();
-  state = 'play';
-  last  = performance.now();
+  document.getElementById('sStart').classList.add('hide');
+  document.getElementById('sOver').classList.add('hide');
+  loadAllSprites();   // pick up any new sprites before game starts
+  initGame();
+  gState = 'play';
+  prevTs = performance.now();
+  document.getElementById('hB').textContent = best;
 }
 
 requestAnimationFrame(loop);
+
+// ── sprite manager UI ──────────────────────────────────────────
+const spritePanel = document.getElementById('sprite-panel');
+document.getElementById('btn-sprites').addEventListener('click', () => {
+  spritePanel.classList.toggle('open');
+});
+
+function buildSlots() {
+  const container = document.getElementById('slots-container');
+  container.innerHTML = '';
+
+  for (const slot of SPRITE_SLOTS) {
+    const stored = localStorage.getItem(spriteKey(slot.key));
+
+    const row = document.createElement('div');
+    row.className = 'slot';
+    row.id = 'slot-' + slot.key;
+
+    // preview
+    const preview = document.createElement('div');
+    preview.className = 'slot-preview';
+    preview.id = 'preview-' + slot.key;
+    if (stored) {
+      preview.innerHTML = `<img src="${stored}" alt="${slot.label}">`;
+    } else {
+      preview.textContent = slot.fallback;
+    }
+
+    // info
+    const info = document.createElement('div');
+    info.className = 'slot-info';
+    info.innerHTML = `<div class="slot-label">${slot.label}</div>
+                      <div class="slot-key">${slot.desc}</div>`;
+
+    // actions
+    const actions = document.createElement('div');
+    actions.className = 'slot-actions';
+
+    const uploadBtn = document.createElement('button');
+    uploadBtn.className = 'sp-upload';
+    uploadBtn.textContent = stored ? '↺ Replace' : '↑ Upload';
+
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'sp-reset';
+    resetBtn.textContent = '✕';
+    resetBtn.title = 'Reset to default';
+    resetBtn.style.display = stored ? '' : 'none';
+
+    // hidden file input
+    const fileInput = document.createElement('input');
+    fileInput.type   = 'file';
+    fileInput.accept = 'image/png,image/jpeg,image/gif,image/webp';
+    fileInput.style.display = 'none';
+
+    uploadBtn.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      const warn = row.querySelector('.sp-warn');
+      if (warn) warn.remove();
+      if (file.size > 200 * 1024) {
+        const w = document.createElement('div');
+        w.className = 'sp-warn';
+        w.textContent = '⚠ File is over 200 KB — consider compressing it.';
+        info.appendChild(w);
+      }
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const data = ev.target.result;
+        saveSprite(slot.key, data);
+        // update preview
+        const p = document.getElementById('preview-' + slot.key);
+        p.innerHTML = `<img src="${data}" alt="${slot.label}">`;
+        uploadBtn.textContent = '↺ Replace';
+        resetBtn.style.display = '';
+      };
+      reader.readAsDataURL(file);
+    });
+
+    resetBtn.addEventListener('click', () => {
+      removeSprite(slot.key);
+      const p = document.getElementById('preview-' + slot.key);
+      p.innerHTML = slot.fallback;
+      uploadBtn.textContent = '↑ Upload';
+      resetBtn.style.display = 'none';
+      const warn = row.querySelector('.sp-warn');
+      if (warn) warn.remove();
+    });
+
+    actions.appendChild(uploadBtn);
+    actions.appendChild(resetBtn);
+    actions.appendChild(fileInput);
+
+    row.appendChild(preview);
+    row.appendChild(info);
+    row.appendChild(actions);
+    container.appendChild(row);
+  }
+}
+
+buildSlots();
 </script>
 </body>
 </html>
