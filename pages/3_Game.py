@@ -12,4 +12,4 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 game_html = pathlib.Path(__file__).parent.parent / "game.html"
-components.html(game_html.read_text(encoding="utf-8"), height=760, scrolling=False)
+components.html(game_html.read_text(encoding="utf-8"), height=860, scrolling=False)
