@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PokéCross — Pokémon Crossy Road</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0f172a;
+    font-family: 'Segoe UI', sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  #ui-bar {
+    display: flex;
+    gap: 32px;
+    margin-bottom: 8px;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  #ui-bar span { color: #f8fafc; font-weight: 700; }
+
+  #canvas-wrap {
+    position: relative;
+    border: 2px solid #334155;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  canvas { display: block; }
+
+  /* overlay screens */
+  .screen {
+    position: absolute;
+    inset: 0;
+    background: rgba(15,23,42,0.92);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    color: #f8fafc;
+  }
+  .screen.hidden { display: none; }
+
+  .screen h1 { font-size: 2rem; }
+  .screen h2 { font-size: 1.4rem; }
+  .screen p  { font-size: 0.85rem; color: #94a3b8; text-align: center; max-width: 220px; }
+
+  .btn {
+    background: #22c55e;
+    color: #0f172a;
+    border: none;
+    padding: 10px 28px;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+  }
+  .btn:hover { background: #16a34a; }
+
+  .score-big { font-size: 2.5rem; font-weight: 900; color: #fbbf24; }
+  .hi-label  { font-size: 0.75rem; color: #64748b; }
+
+  /* mobile d-pad */
+  #dpad {
+    display: none;
+    margin-top: 10px;
+    grid-template-columns: repeat(3, 48px);
+    grid-template-rows: repeat(3, 48px);
+    gap: 4px;
+  }
+  @media (pointer: coarse) { #dpad { display: grid; } }
+
+  .dpad-btn {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #f8fafc;
+    font-size: 1.2rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .dpad-btn:active { background: #334155; }
+  .dpad-center { grid-column: 2; grid-row: 2; background: transparent; border: none; }
+</style>
+</head>
+<body>
+
+<div id="ui-bar">
+  <div>Route <span id="route-num">1</span></div>
+  <div>Distance <span id="dist-val">0</span>m</div>
+  <div>Best <span id="best-val">0</span>m</div>
+</div>
+
+<div id="canvas-wrap">
+  <canvas id="c"></canvas>
+
+  <!-- START SCREEN -->
+  <div class="screen" id="screen-start">
+    <div style="font-size:3rem">⚡</div>
+    <h1>PokéCross</h1>
+    <p>Help Pikachu cross roads and rivers without getting hit!</p>
+    <p style="margin-top:-8px">Arrow keys / WASD to move</p>
+    <button class="btn" id="btn-start">START GAME</button>
+  </div>
+
+  <!-- GAME OVER SCREEN -->
+  <div class="screen hidden" id="screen-over">
+    <div style="font-size:2.5rem">💥</div>
+    <h2>Game Over!</h2>
+    <div class="score-big" id="over-score">0m</div>
+    <div class="hi-label">BEST: <span id="over-best">0</span>m</div>
+    <button class="btn" id="btn-retry">PLAY AGAIN</button>
+  </div>
+</div>
+
+<!-- Mobile d-pad -->
+<div id="dpad">
+  <div></div>
+  <button class="dpad-btn" id="dp-up">▲</button>
+  <div></div>
+  <button class="dpad-btn" id="dp-left">◀</button>
+  <div class="dpad-center"></div>
+  <button class="dpad-btn" id="dp-right">▶</button>
+  <div></div>
+  <button class="dpad-btn" id="dp-down">▼</button>
+  <div></div>
+</div>
+
+<script>
+// roundRect polyfill for Safari <15.4
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    this.moveTo(x + r, y);
+    this.lineTo(x + w - r, y);
+    this.quadraticCurveTo(x + w, y, x + w, y + r);
+    this.lineTo(x + w, y + h - r);
+    this.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    this.lineTo(x + r, y + h);
+    this.quadraticCurveTo(x, y + h, x, y + h - r);
+    this.lineTo(x, y + r);
+    this.quadraticCurveTo(x, y, x + r, y);
+    this.closePath();
+  };
+}
+
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+const TILE   = 48;
+const COLS   = 11;
+const ROWS   = 13;   // visible rows
+const W      = COLS * TILE;
+const H      = ROWS * TILE;
+
+const LANE_TYPES = ['safe','road','road','river','river','safe','road','river','road','road','safe','river'];
+
+// ─── CANVAS ──────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+canvas.width  = W;
+canvas.height = H;
+const ctx = canvas.getContext('2d');
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let state = 'start';   // 'start' | 'play' | 'over'
+let player, world, score, bestScore, stepsTaken;
+bestScore = parseInt(localStorage.getItem('pokecross_best') || '0');
+
+// ─── LANE DATA ────────────────────────────────────────────────────────────────
+function makeLane(yWorld, type, difficultyMult) {
+  const dir    = Math.random() < 0.5 ? 1 : -1;
+  const baseSpeed = type === 'road'
+    ? (1.2 + Math.random() * 1.0) * difficultyMult
+    : (0.6 + Math.random() * 0.5) * difficultyMult;
+  const speed  = baseSpeed * dir;
+  const gap    = type === 'road' ? 3.5 + Math.random() * 2.5 : 4 + Math.random() * 3;
+  const size   = type === 'road' ? 1 : 2 + Math.floor(Math.random() * 2);  // log width in tiles
+  const count  = Math.floor(COLS / gap) + 2;
+  const obstacles = [];
+  for (let i = 0; i < count; i++) {
+    obstacles.push({
+      x: (i * gap * TILE + Math.random() * TILE * 0.5) % (COLS * TILE * 1.5) - TILE,
+      size,
+    });
+  }
+  return { yWorld, type, speed, obstacles, gap, size };
+}
+
+function worldLaneAt(yWorld) {
+  // deterministic lane type from world Y
+  const idx = ((yWorld / TILE) % LANE_TYPES.length + LANE_TYPES.length) % LANE_TYPES.length | 0;
+  return LANE_TYPES[idx];
+}
+
+function initWorld() {
+  player = { x: Math.floor(COLS / 2) * TILE, yWorld: 0, onLog: null, dead: false };
+  world  = { cameraY: 0, lanes: [], maxRowReached: 0 };
+  score  = 0;
+  stepsTaken = 0;
+
+  // pre-generate visible lanes; row 0 (bottom) is always safe
+  for (let row = 0; row <= ROWS + 2; row++) {
+    const yW = -row * TILE;
+    const type = row === 0 ? 'safe' : worldLaneAt(yW);
+    const diff = difficultyAt(0);
+    world.lanes.push(makeLane(yW, type, diff));
+  }
+  world.cameraY = 0;
+}
+
+function difficultyAt(dist) {
+  return 1 + Math.min(dist / 200, 2.0);
+}
+
+// ─── RENDERING ────────────────────────────────────────────────────────────────
+const LANE_COLORS = {
+  safe:  '#14532d',
+  road:  '#1e293b',
+  river: '#1e3a5f',
+};
+const LANE_BORDER = {
+  safe:  '#166534',
+  road:  '#334155',
+  river: '#1e40af',
+};
+
+function laneScreenY(lane) {
+  return H - TILE - (lane.yWorld - world.cameraY);
+}
+
+function drawLane(lane) {
+  const sy = laneScreenY(lane);
+  if (sy < -TILE || sy > H) return;
+
+  // background
+  ctx.fillStyle = LANE_COLORS[lane.type];
+  ctx.fillRect(0, sy, W, TILE);
+
+  // lane border
+  ctx.fillStyle = LANE_BORDER[lane.type];
+  ctx.fillRect(0, sy + TILE - 1, W, 1);
+
+  // grass dots on safe lanes
+  if (lane.type === 'safe') {
+    ctx.font = '14px serif';
+    for (let i = 0; i < COLS; i++) {
+      if ((i + Math.abs(lane.yWorld / TILE | 0)) % 3 === 0) {
+        ctx.fillText('🌿', i * TILE + 10, sy + TILE - 10);
+      }
+    }
+  }
+
+  // obstacles / logs
+  for (const ob of lane.obstacles) {
+    const obW  = ob.size * TILE - 4;
+    const wrap = W + ob.size * TILE + TILE * 2;
+    const ox   = ((ob.x % wrap) + wrap) % wrap - TILE;
+
+    if (lane.type === 'road') {
+      // car body
+      ctx.fillStyle = ob.size === 1 ? '#dc2626' : '#7c3aed';
+      ctx.beginPath();
+      ctx.roundRect(ox + 2, sy + 8, obW, TILE - 16, 6);
+      ctx.fill();
+      // emoji
+      ctx.font = `${TILE - 16}px serif`;
+      ctx.fillText(lane.speed > 0 ? '🚗' : '🚙', ox + 4, sy + TILE - 10);
+    } else {
+      // log
+      ctx.fillStyle = '#92400e';
+      ctx.beginPath();
+      ctx.roundRect(ox + 2, sy + 10, obW, TILE - 20, 8);
+      ctx.fill();
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(ox + 2, sy + 22, obW, 2);
+      // Lapras on first log segment
+      ctx.font = `${TILE - 12}px serif`;
+      ctx.fillText('🦕', ox + 4, sy + TILE - 8);
+    }
+  }
+}
+
+function drawPlayer() {
+  const sy = H - TILE - (player.yWorld - world.cameraY);
+  ctx.font = `${TILE - 6}px serif`;
+  ctx.fillText('⚡', player.x + 2, sy + TILE - 4);
+  // Pikachu under the lightning
+  ctx.font = `${TILE - 10}px serif`;
+  ctx.fillText('🐭', player.x + 2, sy + TILE - 4);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // sky / bg
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 0, W, H);
+
+  // lanes (back to front)
+  for (const lane of [...world.lanes].reverse()) drawLane(lane);
+
+  if (state === 'play' || state === 'over') drawPlayer();
+}
+
+// ─── UPDATE ───────────────────────────────────────────────────────────────────
+let last = 0;
+
+function update(ts) {
+  const dt = Math.min((ts - last) / 1000, 0.1);
+  last = ts;
+
+  if (state !== 'play') return;
+
+  const diff = difficultyAt(score);
+
+  // move obstacles
+  for (const lane of world.lanes) {
+    if (lane.type === 'road' || lane.type === 'river') {
+      for (const ob of lane.obstacles) {
+        ob.x += lane.speed * TILE * dt;
+        // keep x in a consistent range so % arithmetic stays well-defined
+        const wrap = W + ob.size * TILE + TILE * 2;
+        if (ob.x > wrap * 2)  ob.x -= wrap * 2;
+        if (ob.x < -wrap * 2) ob.x += wrap * 2;
+      }
+    }
+  }
+
+  // camera follow (smooth)
+  const targetCam = player.yWorld - (ROWS - 3) * TILE;
+  if (targetCam > world.cameraY) world.cameraY += (targetCam - world.cameraY) * 0.15;
+
+  // generate new lanes ahead of the player
+  const neededTop = world.cameraY - (ROWS + 6) * TILE;
+  let existTop = Math.min(...world.lanes.map(l => l.yWorld));
+  while (existTop > neededTop) {
+    const yW   = existTop - TILE;
+    const type = worldLaneAt(yW);
+    world.lanes.push(makeLane(yW, type, diff));
+    existTop   = yW;
+  }
+  // prune lanes far below camera (memory)
+  const pruneBelow = world.cameraY + (ROWS + 4) * TILE;
+  world.lanes = world.lanes.filter(l => l.yWorld <= pruneBelow);
+
+  // player on log?
+  player.onLog = null;
+  const playerLane = world.lanes.find(l => l.yWorld === player.yWorld);
+
+  function obScreenX(ob) {
+    const wrap = W + ob.size * TILE + TILE * 2;
+    return ((ob.x % wrap) + wrap) % wrap - TILE;
+  }
+
+  if (playerLane && playerLane.type === 'river') {
+    let onAny = false;
+    for (const ob of playerLane.obstacles) {
+      const ox       = obScreenX(ob);
+      const logLeft  = ox + 2;
+      const logRight = ox + ob.size * TILE - 2;
+      if (player.x + 4 >= logLeft && player.x + TILE - 4 <= logRight) {
+        player.onLog = { ob, lane: playerLane };
+        player.x += playerLane.speed * TILE * dt; // carried by log
+        onAny = true;
+        break;
+      }
+    }
+    if (!onAny) die();
+  }
+
+  // car collision
+  if (playerLane && playerLane.type === 'road') {
+    for (const ob of playerLane.obstacles) {
+      const ox = obScreenX(ob);
+      if (player.x + 8 < ox + ob.size * TILE - 4 && player.x + TILE - 8 > ox + 4) {
+        die();
+        break;
+      }
+    }
+  }
+
+  // out of bounds x
+  if (player.x < 0) player.x = 0;
+  if (player.x > (COLS - 1) * TILE) player.x = (COLS - 1) * TILE;
+
+  // fell off screen (camera left them behind)
+  const screenY = H - TILE - (player.yWorld - world.cameraY);
+  if (screenY > H + TILE) die();
+
+  // score = max forward progress
+  const dist = Math.round((-player.yWorld) / TILE) * 5;
+  if (dist > score) score = dist;
+
+  // update HUD
+  document.getElementById('dist-val').textContent = score;
+  document.getElementById('route-num').textContent = Math.floor(score / 50) + 1;
+}
+
+function die() {
+  if (player.dead) return;
+  player.dead = true;
+  state = 'over';
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem('pokecross_best', bestScore);
+  }
+  document.getElementById('over-score').textContent = score + 'm';
+  document.getElementById('over-best').textContent  = bestScore;
+  document.getElementById('best-val').textContent   = bestScore;
+  document.getElementById('screen-over').classList.remove('hidden');
+}
+
+// ─── MOVEMENT ─────────────────────────────────────────────────────────────────
+function move(dx, dy) {
+  if (state !== 'play' || player.dead) return;
+
+  const nx = player.x + dx * TILE;
+  const ny = player.yWorld + dy * TILE;
+
+  if (nx < 0 || nx >= COLS * TILE) return;
+
+  player.x      = nx;
+  player.yWorld = ny;
+}
+
+// keyboard
+const KEYS = new Set();
+document.addEventListener('keydown', e => {
+  if (state === 'start' && (e.key === ' ' || e.key === 'Enter')) startGame();
+  if (state === 'over'  && (e.key === ' ' || e.key === 'Enter')) startGame();
+
+  if (!KEYS.has(e.key)) {
+    KEYS.add(e.key);
+    if (e.key === 'ArrowUp'    || e.key === 'w') move( 0,  1);
+    if (e.key === 'ArrowDown'  || e.key === 's') move( 0, -1);
+    if (e.key === 'ArrowLeft'  || e.key === 'a') move(-1,  0);
+    if (e.key === 'ArrowRight' || e.key === 'd') move( 1,  0);
+    e.preventDefault();
+  }
+});
+document.addEventListener('keyup', e => KEYS.delete(e.key));
+
+// d-pad
+document.getElementById('dp-up').addEventListener('click',    () => move( 0,  1));
+document.getElementById('dp-down').addEventListener('click',  () => move( 0, -1));
+document.getElementById('dp-left').addEventListener('click',  () => move(-1,  0));
+document.getElementById('dp-right').addEventListener('click', () => move( 1,  0));
+
+// buttons
+document.getElementById('btn-start').addEventListener('click', startGame);
+document.getElementById('btn-retry').addEventListener('click', startGame);
+
+// ─── GAME LOOP ────────────────────────────────────────────────────────────────
+function loop(ts) {
+  update(ts);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function startGame() {
+  document.getElementById('screen-start').classList.add('hidden');
+  document.getElementById('screen-over').classList.add('hidden');
+  document.getElementById('best-val').textContent = bestScore;
+  initWorld();
+  state = 'play';
+  last  = performance.now();
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
