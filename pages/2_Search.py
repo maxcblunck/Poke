@@ -7,7 +7,7 @@ from src.ui_helpers import (
     load_database, fmt_price, rec_badge,
     type_badges, signal_chips, display_rarity,
 )
-from src.scraper import get_card_prices, get_tcgplayer_nm_listings
+from src.scraper import get_card_prices
 from src.analyzer import analyze_card
 
 db = load_database()
@@ -311,89 +311,67 @@ if st.session_state.analysis_result:
         )
         st.plotly_chart(price_fig, use_container_width=True)
 
-    # ── TCGPlayer NM Listings ────────────────────────────────────────────────
-    import os
-    has_tcg_creds = bool(os.environ.get("TCGPLAYER_CLIENT_ID") or os.environ.get("TCGPLAYER_CLIENT_ID", ""))
-    if not has_tcg_creds:
-        st.markdown("---")
-        st.markdown(
-            "<p style='color:#6b7280;font-size:0.8rem;'>&#9432; "
-            "Add <code>TCGPLAYER_CLIENT_ID</code> and <code>TCGPLAYER_CLIENT_SECRET</code> "
-            "to <code>.env</code> to enable live NM listing data. "
-            "Free partner access at <strong>developer.tcgplayer.com</strong>.</p>",
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown("---")
-        card    = st.session_state.get("selected_card")
-        label   = st.session_state.get("_card_label", "")
-        details = st.session_state.get("_card_details_cache")
-        card_id = details.get("id") if details else None
+    # ── NM Price Snapshot ────────────────────────────────────────────────────
+    # PokeWallet returns the actual TCGPlayer NM price points:
+    #   low    = cheapest active NM listing
+    #   mid    = median NM listing
+    #   market = weighted average of recent NM sales
+    #   high   = most expensive active NM listing
+    raw_prices = st.session_state.get("_raw_prices", [])
+    first_entry = raw_prices[0] if raw_prices else {}
+    tcg_url  = first_entry.get("url")
+    active   = (st.session_state.get("_pw_variants") or [{}])[
+        st.session_state.get("_variant_idx", 0)
+    ] if st.session_state.get("_pw_variants") else {}
+    pw_snap = {
+        "low":    active.get("low_price")    or first_entry.get("low_price"),
+        "mid":    active.get("mid_price")    or first_entry.get("mid_price"),
+        "market": active.get("market_price") or first_entry.get("market_price"),
+        "high":   active.get("high_price")   or first_entry.get("high_price"),
+    }
 
+    if any(pw_snap.values()):
+        st.markdown("---")
         st.markdown(
             '<div class="listings-header">'
-            '<h3 style="margin:0;">TCGPlayer — Active NM Listings</h3>'
-            '<span class="listings-source-badge">&#9679; Live</span>'
+            '<h3 style="margin:0;">TCGPlayer NM Price Snapshot</h3>'
+            '<span class="listings-source-badge">&#9679; Live TCGPlayer</span>'
             '</div>',
             unsafe_allow_html=True,
         )
 
-        with st.spinner("Fetching NM listings…"):
-            listings = get_tcgplayer_nm_listings(label, card_id, limit=15)
-
-        if not listings:
-            st.markdown(
-                "<p style='color:#6b7280;font-size:0.82rem;'>No NM listings found for this card.</p>",
-                unsafe_allow_html=True,
+        _ROWS = [
+            ("Floor",  "low",    "Cheapest active NM listing",          "#22c55e"),
+            ("Mid",    "mid",    "Median active NM listing",             "#eab308"),
+            ("Market", "market", "Weighted avg of recent NM sales",      "#FFDE00"),
+            ("High",   "high",   "Most expensive active NM listing",     "#ef4444"),
+        ]
+        rows_html = ""
+        for label_txt, key, description, color in _ROWS:
+            val = pw_snap.get(key)
+            price_html = (
+                f'<span style="font-family:\'Press Start 2P\',monospace;font-size:0.75rem;color:{color};">'
+                f"${val:,.2f}</span>"
+                if val else '<span style="color:#6b7280;">—</span>'
             )
-        else:
-            # Colour the price column: lowest 25% green, top 25% red
-            prices    = [l["price"] for l in listings]
-            low_mark  = prices[len(prices) // 4] if len(prices) >= 4 else prices[0]
-            high_mark = prices[-(len(prices) // 4)] if len(prices) >= 4 else prices[-1]
+            rows_html += (
+                f"<tr>"
+                f'<td style="font-weight:600;color:{color};width:80px;">{label_txt}</td>'
+                f"<td>{price_html}</td>"
+                f'<td style="color:#9ca3af;font-size:0.78rem;">{description}</td>'
+                f"</tr>"
+            )
 
-            rows_html = ""
-            for l in listings:
-                price_cls = ""
-                if l["price"] <= low_mark:
-                    price_cls = ""              # green (default .listing-price)
-                elif l["price"] >= high_mark:
-                    price_cls = " listing-price-high"
+        st.markdown(
+            f'<table class="listings-table"><tbody>{rows_html}</tbody></table>',
+            unsafe_allow_html=True,
+        )
 
-                verified_badge = (
-                    '<span class="listing-verified">&#10003; Direct</span>'
-                    if l["verified"] else ""
-                )
-                rating_html = (
-                    f'<span class="listing-rating">★ {l["seller_rating"]:.1f}</span>'
-                    if l["seller_rating"] is not None else
-                    '<span style="color:#6b7280;">—</span>'
-                )
-                rows_html += (
-                    f"<tr>"
-                    f'<td>{l["seller"]} {verified_badge}</td>'
-                    f'<td><span class="listing-price{price_cls}">${l["price"]:,.2f}</span></td>'
-                    f'<td style="text-align:center;">{l["quantity"]}</td>'
-                    f'<td>{rating_html}</td>'
-                    f"</tr>"
-                )
-
+        if tcg_url:
             st.markdown(
-                f"""
-                <table class="listings-table">
-                  <thead>
-                    <tr>
-                      <th>Seller</th>
-                      <th>Price</th>
-                      <th style="text-align:center;">Qty</th>
-                      <th>Rating</th>
-                    </tr>
-                  </thead>
-                  <tbody>{rows_html}</tbody>
-                </table>
-                <p style="color:#6b7280;font-size:0.72rem;margin-top:0.5rem;">
-                  {len(listings)} NM listing(s) · Near Mint condition only · sorted by price
-                </p>
-                """,
+                f'<a href="{tcg_url}" target="_blank" style="display:inline-block;margin-top:0.8rem;'
+                f'font-family:\'Press Start 2P\',monospace;font-size:0.6rem;color:#FFDE00;'
+                f'background:#CC0000;border:2px solid #FFDE00;border-radius:6px;'
+                f'padding:0.5rem 1rem;text-decoration:none;">VIEW ALL LISTINGS ON TCGPLAYER &#8599;</a>',
                 unsafe_allow_html=True,
             )
