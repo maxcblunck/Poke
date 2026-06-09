@@ -211,12 +211,14 @@ canvas.height = H;
 const ctx = canvas.getContext('2d');
 
 // ── sprite system ──────────────────────────────────────────────
+const POKE_BASE = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/';
+
 const SPRITE_SLOTS = [
-  { key: 'player',   label: 'Player',             fallback: '🐭', desc: 'Main character (Pikachu)' },
-  { key: 'road_sm',  label: 'Road — Car (small)',  fallback: '🚗', desc: 'Small road obstacle' },
-  { key: 'road_lg',  label: 'Road — Truck (large)',fallback: '🚛', desc: 'Large road obstacle' },
-  { key: 'water',    label: 'Water Float',         fallback: '🦕', desc: 'Log / Lapras obstacle' },
-  { key: 'item',     label: 'Collectible',         fallback: '⭐', desc: 'Coins / items (future)' },
+  { key: 'player',  label: 'Player',              fallback: '🐭', desc: 'Main character (Pikachu)',   default: POKE_BASE + '25.png'  },
+  { key: 'road_sm', label: 'Road — Rapidash',      fallback: '🚗', desc: 'Small road obstacle',        default: POKE_BASE + '78.png'  },
+  { key: 'road_lg', label: 'Road — Snorlax',       fallback: '🚛', desc: 'Large road obstacle',        default: POKE_BASE + '143.png' },
+  { key: 'water',   label: 'Water — Lapras',       fallback: '🦕', desc: 'Water lane float',           default: POKE_BASE + '131.png' },
+  { key: 'item',    label: 'Collectible',          fallback: '⭐', desc: 'Coins / items (future)',     default: POKE_BASE + '35.png'  },
 ];
 const LS_PREFIX = 'pkcross_spr_';
 
@@ -225,13 +227,22 @@ const spriteImgs = {};
 
 function spriteKey(slotKey) { return LS_PREFIX + slotKey; }
 
+function loadImg(src, crossOrigin) {
+  const img = new Image();
+  if (crossOrigin) img.crossOrigin = 'anonymous';
+  img.src = src;
+  return img;
+}
+
 function loadAllSprites() {
   for (const slot of SPRITE_SLOTS) {
-    const data = localStorage.getItem(spriteKey(slot.key));
-    if (data) {
-      const img = new Image();
-      img.src = data;
-      spriteImgs[slot.key] = img;
+    const stored = localStorage.getItem(spriteKey(slot.key));
+    if (stored) {
+      // user-uploaded base64 — no CORS needed
+      spriteImgs[slot.key] = loadImg(stored, false);
+    } else if (slot.default) {
+      // PokeAPI default — needs CORS anonymous so canvas stays usable
+      spriteImgs[slot.key] = loadImg(slot.default, true);
     } else {
       delete spriteImgs[slot.key];
     }
@@ -240,14 +251,18 @@ function loadAllSprites() {
 
 function saveSprite(slotKey, dataURL) {
   localStorage.setItem(spriteKey(slotKey), dataURL);
-  const img = new Image();
-  img.src = dataURL;
-  spriteImgs[slotKey] = img;
+  spriteImgs[slotKey] = loadImg(dataURL, false);
 }
 
 function removeSprite(slotKey) {
   localStorage.removeItem(spriteKey(slotKey));
-  delete spriteImgs[slotKey];
+  // fall back to default if one exists
+  const slot = SPRITE_SLOTS.find(s => s.key === slotKey);
+  if (slot && slot.default) {
+    spriteImgs[slotKey] = loadImg(slot.default, true);
+  } else {
+    delete spriteImgs[slotKey];
+  }
 }
 
 loadAllSprites();
@@ -639,6 +654,8 @@ function buildSlots() {
     preview.id = 'preview-' + slot.key;
     if (stored) {
       preview.innerHTML = `<img src="${stored}" alt="${slot.label}">`;
+    } else if (slot.default) {
+      preview.innerHTML = `<img src="${slot.default}" alt="${slot.label}" crossorigin="anonymous">`;
     } else {
       preview.textContent = slot.fallback;
     }
@@ -698,7 +715,11 @@ function buildSlots() {
     resetBtn.addEventListener('click', () => {
       removeSprite(slot.key);
       const p = document.getElementById('preview-' + slot.key);
-      p.innerHTML = slot.fallback;
+      if (slot.default) {
+        p.innerHTML = `<img src="${slot.default}" alt="${slot.label}" crossorigin="anonymous">`;
+      } else {
+        p.textContent = slot.fallback;
+      }
       uploadBtn.textContent = '↑ Upload';
       resetBtn.style.display = 'none';
       const warn = row.querySelector('.sp-warn');
