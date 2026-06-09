@@ -28,7 +28,7 @@ st.markdown(POKEBALL_CSS, unsafe_allow_html=True)
 # Hero banner shown on every page
 st.markdown("""
 <div class="hero">
-  <p class="hero-title" style="font-family:'Press Start 2P',monospace;">PokéValue & PokéCross</p>
+  <p class="hero-title">🎮 PokéValue & PokéCross 🃏</p>
   <p class="hero-sub">Card Valuation Tool and Fun 2D Game</p>
 </div>
 """, unsafe_allow_html=True)

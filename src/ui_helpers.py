@@ -44,13 +44,14 @@ p, span, div, label { font-family: 'Inter', sans-serif !important; }
 
 /* ── Hero ── */
 .hero {
-    background: linear-gradient(135deg, #CC0000 0%, #880000 60%, #0d0f1a 100%);
+    background: linear-gradient(135deg, #FF8C00 0%, #CC0000 60%, #880000 100%);
     border: 3px solid #FFDE00;
     border-radius: 12px;
     padding: 2.5rem 2rem 2rem;
     margin-bottom: 1.8rem;
     position: relative;
     overflow: hidden;
+    text-align: center;
 }
 .hero::before {
     content: "⬤";
@@ -62,10 +63,10 @@ p, span, div, label { font-family: 'Inter', sans-serif !important; }
     pointer-events: none;
 }
 .hero-title {
-    font-family: 'Press Start 2P', monospace;
+    font-family: 'Press Start 2P', monospace !important;
     font-size: 2.4rem;
     color: #FFDE00;
-    text-shadow: 4px 4px 0 #000, -1px -1px 0 #CC0000;
+    text-shadow: 4px 4px 0 #000, -1px -1px 0 #FF8C00;
     margin: 0 0 0.7rem 0;
     letter-spacing: 2px;
 }
