@@ -70,18 +70,24 @@ canvas.width=W; canvas.height=H;
 const ctx=canvas.getContext('2d');
 
 // ── IMAGE LOADING ─────────────────────────────────────────────
-const SPRITE = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/';
-const ART    = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/';
+const ART     = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/';
+const ANIMATED = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/';
 
 const POKEDEX = {
   pikachu:25, charmander:4, bulbasaur:1, squirtle:7,
   rapidash:78, doduo:84, snorlax:143, lapras:131, rayquaza:384
 };
 
-const imgs={}, artImgs={};
+// hidden container keeps GIFs in the DOM so browsers advance their frames
+const sprCache=document.createElement('div');
+sprCache.style.cssText='position:absolute;opacity:0;pointer-events:none;width:0;height:0;overflow:hidden';
+document.body.appendChild(sprCache);
+
+const animImgs={}, artImgs={};
 Object.entries(POKEDEX).forEach(([k,id])=>{
-  const s=new Image(); s.crossOrigin='anonymous'; s.src=SPRITE+id+'.png'; imgs[k]=s;
-  const a=new Image(); a.crossOrigin='anonymous'; a.src=ART+id+'.png';   artImgs[k]=a;
+  const g=new Image(); g.crossOrigin='anonymous'; g.src=ANIMATED+id+'.gif';
+  sprCache.appendChild(g); animImgs[k]=g;
+  const a=new Image(); a.crossOrigin='anonymous'; a.src=ART+id+'.png'; artImgs[k]=a;
 });
 
 function drawImg(img,x,y,w,h,flipH){
@@ -368,37 +374,47 @@ function drawWorld(){
   }
 }
 
+function drawShadow(cx,sy,rx,ry){
+  ctx.fillStyle='rgba(0,0,0,0.28)';
+  ctx.beginPath(); ctx.ellipse(cx,sy+TILE-8,rx,ry,0,0,PI*2); ctx.fill();
+}
+
 function drawRoadOb(ob,sy){
   const flip=ob.spd<0;
-  // colored backing so obstacles are visible before image loads
-  ctx.fillStyle=ob.w>TILE?'#5b21b6':'#991b1b';
-  ctx.fillRect(ob.x+2,sy+12,ob.w-4,TILE-24);
-  // Pokémon image centered in tile height
-  const pad=4, ih=TILE-pad*2, iw=ob.w-pad*2;
-  drawImg(imgs[ob.pokemon], ob.x+pad, sy+pad, iw, ih, flip);
+  const big=ob.w>TILE;
+  // shadow on road surface
+  const cx=ob.x+ob.w/2;
+  drawShadow(cx,sy, big?TILE*.7:TILE*.38, big?8:5);
+  // animated Pokémon: snorlax gets 1.5× tile, others fill the tile
+  const ih=big?TILE*1.5:TILE, iw=big?TILE*1.5:TILE;
+  const ix=ob.x+(ob.w-iw)/2;
+  const iy=sy+(TILE-ih)/2;
+  drawImg(animImgs[ob.pokemon], ix, iy, iw, ih, flip);
 }
 
 function drawWaterOb(ob,sy){
   const flip=ob.spd<0;
-  // log backing
-  ctx.fillStyle='#92400e'; ctx.fillRect(ob.x+2,sy+18,ob.w-4,TILE-36);
-  ctx.fillStyle='#78350f'; ctx.fillRect(ob.x+2,sy+26,ob.w-4,3);
-  // Lapras: keep natural aspect, center on log
-  const ih=TILE-8, iw=Math.min(ob.w-8, ih*1.5);
+  // ripple ring on water surface
+  const cx=ob.x+ob.w/2;
+  ctx.strokeStyle='rgba(147,197,253,0.35)'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.ellipse(cx,sy+TILE-10,ob.w*.42,7,0,0,PI*2); ctx.stroke();
+  // animated Lapras floating
+  const ih=TILE-4, iw=Math.min(ob.w-8, ih*1.4);
   const ix=ob.x+(ob.w-iw)/2;
-  drawImg(imgs['lapras'], ix, sy+4, iw, ih, flip);
+  drawImg(animImgs['lapras'], ix, sy+2, iw, ih, flip);
 }
 
 function drawRayquaza(ob,sy){
   const flip=ob.spd<0;
-  // purple glow behind Rayquaza
-  ctx.fillStyle='rgba(109,40,217,0.35)';
-  ctx.fillRect(ob.x+4,sy+4,ob.w-8,TILE-8);
-  // Rayquaza image: tall and centered (he's a long vertical creature)
-  const ih=TILE*1.5, iw=ob.w*0.85;
+  // energy trail streaks
+  ctx.fillStyle='rgba(109,40,217,0.18)';
+  const trailW=ob.w*0.6, trailH=TILE*0.4;
+  ctx.fillRect(ob.x+(ob.w-trailW)/2, sy+(TILE-trailH)/2, trailW, trailH);
+  // animated Rayquaza: tall, centered
+  const ih=TILE*1.6, iw=ob.w*0.75;
   const ix=ob.x+(ob.w-iw)/2;
   const iy=sy+(TILE-ih)/2;
-  drawImg(imgs['rayquaza'], ix, iy, iw, ih, flip);
+  drawImg(animImgs['rayquaza'], ix, iy, iw, ih, flip);
 }
 
 function drawPlayer(){
@@ -422,7 +438,7 @@ function drawPlayer(){
   const sprSz=TILE-8;
   const sx=dx+(TILE-sprSz)/2;
   const sy=dy+(TILE-sprSz)/2;  // ← centers the character in the lane stripe
-  drawImg(imgs[CHAR_KEYS[selectedChar]], sx, sy, sprSz, sprSz, false);
+  drawImg(animImgs[CHAR_KEYS[selectedChar]], sx, sy, sprSz, sprSz, false);
 }
 
 // ── CHARACTER SELECT ──────────────────────────────────────────
