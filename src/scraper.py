@@ -17,10 +17,15 @@ POKEWALLET_BASE_URL  = "https://api.pokewallet.io"
 POKEWALLET_API_KEY   = os.getenv("POKEWALLET_API_KEY", "")
 POKETRACE_BASE_URL   = "https://api.poketrace.com/v1"
 POKETRACE_API_KEY    = os.getenv("POKETRACE_API_KEY", "")
+TCGPLAYER_BASE_URL     = "https://api.tcgplayer.com/v1.32.0"
+TCGPLAYER_CLIENT_ID    = os.getenv("TCGPLAYER_CLIENT_ID", "")
+TCGPLAYER_CLIENT_SECRET = os.getenv("TCGPLAYER_CLIENT_SECRET", "")
 _SETS_CACHE_PATH     = os.path.join(os.path.dirname(__file__), "..", "data", "pokewallet_sets.json")
 _sets_cache: list | None = None
 _set_language: dict[str, str] = {}   # set_id → language, populated alongside _sets_cache
 _poketrace_id_cache: dict[str, str | None] = {}   # card_local_id → PokeTrace UUID
+_tcg_token_cache: dict = {}            # {"token": str, "expires_at": float}
+_tcg_product_cache: dict[str, int | None] = {}   # card_local_id → TCGPlayer productId
 
 
 def _get_pokewallet_sets() -> list:
@@ -384,6 +389,189 @@ def _get_base_price(card_name: str, card_local_id: str | None = None) -> float:
         return random.Random(card_name).uniform(5.0, 500.0)
 
     return valuate_card(candidates[0])["simulated_price"]
+
+
+# ---------------------------------------------------------------------------
+# TCGPlayer direct API — individual Near Mint listings
+#
+# Requires a free Partner account at developer.tcgplayer.com.
+# Set TCGPLAYER_CLIENT_ID and TCGPLAYER_CLIENT_SECRET in .env to enable.
+# ---------------------------------------------------------------------------
+
+_TCG_NM_CONDITION_ID = 1   # TCGPlayer conditionId for Near Mint
+
+
+def _tcgplayer_api_key() -> tuple[str, str]:
+    return (
+        os.environ.get("TCGPLAYER_CLIENT_ID", "")     or TCGPLAYER_CLIENT_ID,
+        os.environ.get("TCGPLAYER_CLIENT_SECRET", "") or TCGPLAYER_CLIENT_SECRET,
+    )
+
+
+def _tcgplayer_bearer() -> str | None:
+    """
+    Return a valid TCGPlayer OAuth2 bearer token, refreshing when within
+    60 seconds of expiry. Returns None if credentials are not configured.
+    """
+    import time
+    cid, csec = _tcgplayer_api_key()
+    if not cid or not csec:
+        return None
+
+    now = time.time()
+    if _tcg_token_cache.get("token") and _tcg_token_cache.get("expires_at", 0) > now + 60:
+        return _tcg_token_cache["token"]
+
+    try:
+        r = requests.post(
+            "https://api.tcgplayer.com/token",
+            data={
+                "grant_type":    "client_credentials",
+                "client_id":     cid,
+                "client_secret": csec,
+            },
+            timeout=15,
+        )
+        r.raise_for_status()
+        data  = r.json()
+        token = data.get("access_token")
+        if not token:
+            return None
+        _tcg_token_cache["token"]      = token
+        _tcg_token_cache["expires_at"] = now + float(data.get("expires_in", 1_209_600))
+        return token
+    except Exception:
+        return None
+
+
+def _tcgplayer_find_product(card_name: str, card_local_id: str | None = None) -> int | None:
+    """
+    Resolve a TCGPlayer productId for a Pokémon card.
+    Results are cached for the process lifetime to avoid redundant lookups.
+    """
+    cache_key = card_local_id or card_name
+    if cache_key in _tcg_product_cache:
+        return _tcg_product_cache[cache_key]
+
+    token = _tcgplayer_bearer()
+    if not token:
+        return None
+
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Parse "Charizard (Base Set)" → name + optional set hint
+    m        = re.match(r"^(.*?)\s*\(([^)]+)\)\s*$", card_name)
+    name     = m.group(1).strip() if m else card_name
+    set_hint = m.group(2).strip() if m else None
+
+    params: dict = {"productLineName": "Pokemon", "productName": name, "limit": 20}
+    if set_hint:
+        params["groupName"] = set_hint
+
+    try:
+        r = requests.get(
+            f"{TCGPLAYER_BASE_URL}/catalog/products",
+            headers=headers,
+            params=params,
+            timeout=15,
+        )
+        r.raise_for_status()
+        items = r.json().get("results", [])
+    except Exception:
+        _tcg_product_cache[cache_key] = None
+        return None
+
+    if not items:
+        _tcg_product_cache[cache_key] = None
+        return None
+
+    # Prefer exact card-number match when we have it
+    product_id = None
+    if card_local_id:
+        raw_num = card_local_id.rsplit("-", 1)[-1].lstrip("0")
+        for item in items:
+            cn = str(item.get("number", "")).lstrip("0")
+            if cn == raw_num:
+                product_id = item["productId"]
+                break
+
+    if product_id is None:
+        product_id = items[0]["productId"]
+
+    _tcg_product_cache[cache_key] = product_id
+    return product_id
+
+
+def get_tcgplayer_nm_listings(
+    card_name: str,
+    card_local_id: str | None = None,
+    limit: int = 15,
+) -> list[dict]:
+    """
+    Fetch active Near Mint listings from TCGPlayer, sorted by price ascending.
+
+    Each dict contains:
+        seller        — seller display name
+        price         — float, listed price USD
+        quantity      — int, copies available at that price
+        seller_rating — float | None, feedback score (0–5)
+        verified      — bool, TCGPlayer Direct / verified seller
+        condition     — "Near Mint"
+
+    Returns an empty list when credentials are absent or the card isn't found.
+    """
+    product_id = _tcgplayer_find_product(card_name, card_local_id)
+    if not product_id:
+        return []
+
+    token = _tcgplayer_bearer()
+    if not token:
+        return []
+
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        r = requests.get(
+            f"{TCGPLAYER_BASE_URL}/stores/product/{product_id}/listings",
+            headers=headers,
+            params={
+                "conditionIds":  _TCG_NM_CONDITION_ID,
+                "limit":         limit,
+                "sortBy":        "price",
+                "sortDirection": "Ascending",
+            },
+            timeout=15,
+        )
+        r.raise_for_status()
+        raw = r.json().get("results", [])
+    except Exception:
+        return []
+
+    listings = []
+    for row in raw[:limit]:
+        # TCGPlayer returns seller info either at root or nested under "seller"
+        seller_obj  = row.get("seller") or {}
+        seller_name = (row.get("sellerName")
+                       or seller_obj.get("name")
+                       or "Unknown")
+        rating = (row.get("sellerRating")
+                  or seller_obj.get("feedbackScore"))
+        verified = bool(
+            row.get("verified")
+            or row.get("isTCGDirectListing")
+            or seller_obj.get("verified")
+        )
+        listings.append({
+            "seller":        seller_name,
+            "price":         float(row.get("price", 0.0)),
+            "quantity":      int(row.get("quantity", 1)),
+            "seller_rating": round(float(rating), 1) if rating is not None else None,
+            "verified":      verified,
+            "condition":     "Near Mint",
+        })
+
+    listings.sort(key=lambda x: x["price"])
+    return listings[:limit]
+
 
 # Full set of headers that match what Chrome sends on a real page visit.
 # eBay's bot-detection checks for Accept, Accept-Encoding, and Connection

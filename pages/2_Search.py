@@ -7,7 +7,7 @@ from src.ui_helpers import (
     load_database, fmt_price, rec_badge,
     type_badges, signal_chips, display_rarity,
 )
-from src.scraper import get_card_prices
+from src.scraper import get_card_prices, get_tcgplayer_nm_listings
 from src.analyzer import analyze_card
 
 db = load_database()
@@ -310,3 +310,90 @@ if st.session_state.analysis_result:
             showlegend=False,
         )
         st.plotly_chart(price_fig, use_container_width=True)
+
+    # ── TCGPlayer NM Listings ────────────────────────────────────────────────
+    import os
+    has_tcg_creds = bool(os.environ.get("TCGPLAYER_CLIENT_ID") or os.environ.get("TCGPLAYER_CLIENT_ID", ""))
+    if not has_tcg_creds:
+        st.markdown("---")
+        st.markdown(
+            "<p style='color:#6b7280;font-size:0.8rem;'>&#9432; "
+            "Add <code>TCGPLAYER_CLIENT_ID</code> and <code>TCGPLAYER_CLIENT_SECRET</code> "
+            "to <code>.env</code> to enable live NM listing data. "
+            "Free partner access at <strong>developer.tcgplayer.com</strong>.</p>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown("---")
+        card    = st.session_state.get("selected_card")
+        label   = st.session_state.get("_card_label", "")
+        details = st.session_state.get("_card_details_cache")
+        card_id = details.get("id") if details else None
+
+        st.markdown(
+            '<div class="listings-header">'
+            '<h3 style="margin:0;">TCGPlayer — Active NM Listings</h3>'
+            '<span class="listings-source-badge">&#9679; Live</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        with st.spinner("Fetching NM listings…"):
+            listings = get_tcgplayer_nm_listings(label, card_id, limit=15)
+
+        if not listings:
+            st.markdown(
+                "<p style='color:#6b7280;font-size:0.82rem;'>No NM listings found for this card.</p>",
+                unsafe_allow_html=True,
+            )
+        else:
+            # Colour the price column: lowest 25% green, top 25% red
+            prices    = [l["price"] for l in listings]
+            low_mark  = prices[len(prices) // 4] if len(prices) >= 4 else prices[0]
+            high_mark = prices[-(len(prices) // 4)] if len(prices) >= 4 else prices[-1]
+
+            rows_html = ""
+            for l in listings:
+                price_cls = ""
+                if l["price"] <= low_mark:
+                    price_cls = ""              # green (default .listing-price)
+                elif l["price"] >= high_mark:
+                    price_cls = " listing-price-high"
+
+                verified_badge = (
+                    '<span class="listing-verified">&#10003; Direct</span>'
+                    if l["verified"] else ""
+                )
+                rating_html = (
+                    f'<span class="listing-rating">★ {l["seller_rating"]:.1f}</span>'
+                    if l["seller_rating"] is not None else
+                    '<span style="color:#6b7280;">—</span>'
+                )
+                rows_html += (
+                    f"<tr>"
+                    f'<td>{l["seller"]} {verified_badge}</td>'
+                    f'<td><span class="listing-price{price_cls}">${l["price"]:,.2f}</span></td>'
+                    f'<td style="text-align:center;">{l["quantity"]}</td>'
+                    f'<td>{rating_html}</td>'
+                    f"</tr>"
+                )
+
+            st.markdown(
+                f"""
+                <table class="listings-table">
+                  <thead>
+                    <tr>
+                      <th>Seller</th>
+                      <th>Price</th>
+                      <th style="text-align:center;">Qty</th>
+                      <th>Rating</th>
+                    </tr>
+                  </thead>
+                  <tbody>{rows_html}</tbody>
+                </table>
+                <p style="color:#6b7280;font-size:0.72rem;margin-top:0.5rem;">
+                  {len(listings)} NM listing(s) · Near Mint condition only · sorted by price
+                </p>
+                """,
+                unsafe_allow_html=True,
+            )

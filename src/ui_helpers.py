@@ -198,6 +198,20 @@ p, span, div, label { font-family: 'Inter', sans-serif !important; }
 hr { border-color: #2a2d45 !important; }
 [data-testid="stDataFrame"] { border: 1px solid #2a2d45; border-radius: 8px; }
 
+/* ── NM Listings table ── */
+.listings-table { width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; font-size: 0.82rem; }
+.listings-table thead tr { border-bottom: 2px solid #FFDE00; }
+.listings-table thead th { color: #FFDE00; font-weight: 600; padding: 6px 10px; text-align: left; font-size: 0.72rem; letter-spacing: 0.5px; text-transform: uppercase; }
+.listings-table tbody tr { border-bottom: 1px solid #2a2d45; transition: background 0.1s; }
+.listings-table tbody tr:hover { background: #1e2035; }
+.listings-table tbody td { padding: 7px 10px; color: #e8e8e8; vertical-align: middle; }
+.listing-price { font-family: 'Press Start 2P', monospace; font-size: 0.75rem; color: #22c55e; }
+.listing-price-high { color: #ef4444; }
+.listing-verified { background: #1a3a2a; color: #22c55e; border: 1px solid #22c55e; border-radius: 4px; font-size: 0.65rem; padding: 1px 6px; white-space: nowrap; }
+.listing-rating { color: #eab308; }
+.listings-header { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 0.6rem; }
+.listings-source-badge { background: #14532d; color: #86efac; border: 1px solid #22c55e; border-radius: 4px; font-size: 0.7rem; padding: 2px 8px; font-family: 'Inter', sans-serif; }
+
 /* ── Sidebar ── */
 [data-testid="stSidebar"] { background: #10121f !important; border-right: 2px solid #FFDE00 !important; }
 [data-testid="stSidebar"] * { color: #e8e8e8 !important; }
