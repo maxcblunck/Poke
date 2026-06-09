@@ -155,11 +155,22 @@ function makeLane(row){
       const pokemon=big?'snorlax':(Math.random()<.5?'rapidash':'doduo');
       obs.push({x:i*gap+Math.random()*gap*.4, w:big?TILE*2:TILE, spd, pokemon});
     }
+    // sort by x then push apart so no two obstacles start overlapping
+    obs.sort((a,b)=>a.x-b.x);
+    for(let i=1;i<obs.length;i++){
+      const minX=obs[i-1].x+obs[i-1].w+12;
+      if(obs[i].x<minX) obs[i].x=minX;
+    }
   } else {
     const spd=(50+Math.random()*45)*diff*dir;
     for(let i=0;i<count;i++){
       const len=TILE*(2+Math.floor(Math.random()*2));
       obs.push({x:i*gap+Math.random()*gap*.3, w:len, spd, pokemon:'lapras'});
+    }
+    obs.sort((a,b)=>a.x-b.x);
+    for(let i=1;i<obs.length;i++){
+      const minX=obs[i-1].x+obs[i-1].w+12;
+      if(obs[i].x<minX) obs[i].x=minX;
     }
   }
   return {row,type,obs};
@@ -196,10 +207,12 @@ function tryHop(dc,dr){
 
 function easeIO(t){ return t<.5?2*t*t:-1+(4-2*t)*t; }
 
+// Fixed span and fixed triggers so same-speed obstacles with different
+// widths don't drift relative to each other across wrap cycles.
+const WRAP_SPAN = W + TILE * 6;
 function wrapOb(ob){
-  const span=W+ob.w+TILE*2;
-  if(ob.spd>0&&ob.x>W+ob.w+TILE)  ob.x-=span;
-  if(ob.spd<0&&ob.x<-ob.w-TILE*2) ob.x+=span;
+  if(ob.spd>0 && ob.x > W + TILE*3)          ob.x -= WRAP_SPAN;
+  if(ob.spd<0 && ob.x + ob.w < -TILE*3)      ob.x += WRAP_SPAN;
 }
 
 // ── COLLISION ─────────────────────────────────────────────────
