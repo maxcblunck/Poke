@@ -1063,6 +1063,18 @@ def _poketrace_api_key() -> str:
     return os.environ.get("POKETRACE_API_KEY", "") or POKETRACE_API_KEY
 
 
+def _norm_card_fraction(s: str) -> str:
+    """Strip leading zeros from each segment: '087/086' → '87/86', '3/39' → '3/39'."""
+    parts = s.split("/")
+    out = []
+    for p in parts:
+        try:
+            out.append(str(int(p)))
+        except ValueError:
+            out.append(p)
+    return "/".join(out)
+
+
 def _poketrace_find_card(card_name: str, card_local_id: str | None) -> str | None:
     """Return PokeTrace UUID for a card, or None if not found. Results are cached."""
     cache_key = _composite_cache_key(card_name, card_local_id)
@@ -1108,18 +1120,19 @@ def _poketrace_find_card(card_name: str, card_local_id: str | None) -> str | Non
         return None
 
     # Match priority: exact fraction first ("87/86"), then prefix ("87/...")
-    # Exact match is critical for IRs — "87/86" must not match Common "87/120".
+    # PokeTrace uses zero-padded card numbers ("087/086") so normalize before comparing.
     uid = None
     if card_number:
         if exact_fraction:
             for item in items:
-                if (item.get("cardNumber") or "") == exact_fraction:
+                norm = _norm_card_fraction(item.get("cardNumber") or "")
+                if norm == exact_fraction:
                     uid = item["id"]
                     break
         if not uid:
             for item in items:
-                cn = item.get("cardNumber") or ""
-                if cn.startswith(card_number + "/") or cn == card_number:
+                norm = _norm_card_fraction(item.get("cardNumber") or "")
+                if norm.startswith(card_number + "/") or norm == card_number:
                     uid = item["id"]
                     break
 
