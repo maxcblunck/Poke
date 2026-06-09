@@ -289,6 +289,13 @@ _SET_PULL_RATES: dict[str, dict[str, float]] = {
         "Rare Holo": 5.6,     "Rare": 1.6,
         "Trainer Gallery Rare Holo": 4.5,
     },
+    # ── e-Card era ────────────────────────────────────────────────────
+    "ecard2": {  # Aquapolis — Crystal cards are secret rares; 1/18 packs for any crystal, 3 in set → 54 per card
+        "Rare Secret": 18.0,
+    },
+    "ecard3": {  # Skyridge — Crystal cards are secret rares; 1/18 packs for any crystal, 6 in set → 108 per card
+        "Rare Secret": 18.0,
+    },
 }
 
 # Era-based fallback rates (used when no per-set entry exists)
