@@ -279,6 +279,26 @@ _pokeball_svg = (
     "</svg>"
 )
 _pokeball_b64 = base64.b64encode(_pokeball_svg.encode()).decode()
+
+_ANIMATED = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/"
+# (id, top%, left%, size-px, opacity)
+_BG_SPRITES = [
+    (25,  "4%",  "2%",  72, 0.10),   # Pikachu
+    (6,   "8%",  "88%", 80, 0.08),   # Charizard
+    (150, "28%", "94%", 88, 0.07),   # Mewtwo
+    (94,  "52%", "1%",  76, 0.09),   # Gengar
+    (143, "68%", "85%", 90, 0.07),   # Snorlax
+    (131, "82%", "6%",  80, 0.08),   # Lapras
+    (149, "88%", "92%", 80, 0.07),   # Dragonite
+    (133, "46%", "48%", 64, 0.06),   # Eevee (subtle centre)
+]
+_sprite_imgs = "".join(
+    f'<img src="{_ANIMATED}{pid}.gif" style="position:fixed;top:{top};left:{left};'
+    f'width:{sz}px;height:{sz}px;opacity:{op};image-rendering:pixelated;'
+    f'pointer-events:none;z-index:0;" />'
+    for pid, top, left, sz, op in _BG_SPRITES
+)
+
 POKEBALL_CSS = f"""
 <style>
 .stApp {{
@@ -288,6 +308,7 @@ POKEBALL_CSS = f"""
     background-attachment: fixed;
 }}
 </style>
+{_sprite_imgs}
 """
 
 

@@ -28,7 +28,7 @@ st.markdown(POKEBALL_CSS, unsafe_allow_html=True)
 # Hero banner shown on every page
 st.markdown("""
 <div class="hero">
-  <p class="hero-title">🎮 PokéValue & PokéCross 🃏</p>
+  <p class="hero-title"><img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/25.gif" style="width:48px;height:48px;image-rendering:pixelated;vertical-align:middle;margin-right:12px;"> PokéValue &amp; PokéCross <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/6.gif" style="width:48px;height:48px;image-rendering:pixelated;vertical-align:middle;margin-left:12px;"></p>
   <p class="hero-sub">Card Valuation Tool and Fun 2D Game</p>
 </div>
 """, unsafe_allow_html=True)
