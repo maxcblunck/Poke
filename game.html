@@ -189,7 +189,7 @@ function initGame(){
   lanes={}; maxGen=0; score=0; camRow=-BELOW; gameTime=0;
   ensureLanes(VIS+6);
   const sc=Math.floor(COLS/2);
-  player={col:sc,row:0,x:sc*TILE,fromRow:0,fromX:sc*TILE,moving:false,hopT:0,dead:false,logMoved:0};
+  player={col:sc,row:0,x:sc*TILE,fromRow:0,fromX:sc*TILE,moving:false,hopT:0,dead:false};
 }
 
 // ── MOVEMENT ──────────────────────────────────────────────────
@@ -200,8 +200,8 @@ function tryHop(dc,dr){
   ensureLanes(nr+2);
   const dl=lanes[nr];
   if(dl&&dl.trees&&dl.trees.includes(nc)) return;
-  player.fromRow=player.row; player.fromX=player.col*TILE;
-  player.col=nc; player.row=nr; player.moving=true; player.hopT=0; player.logMoved=0;
+  player.fromRow=player.row; player.fromX=player.x;
+  player.col=nc; player.row=nr; player.moving=true; player.hopT=0;
   if(nr>score){ score=nr; if(score>best){best=score;localStorage.setItem('pkx5',best);} }
 }
 
@@ -219,7 +219,10 @@ function wrapOb(ob){
 function logUnder(px){
   const ln=lanes[player.row]; if(!ln||ln.type!=='water') return null;
   const x=(px!==undefined?px:player.x)+TILE*.15, pw=TILE*.7;
-  for(const ob of ln.obs) if(x<ob.x+ob.w-2&&x+pw>ob.x+2) return ob;
+  for(const ob of ln.obs){
+    const safeX=ob.x+(ob.w-TILE)/2;
+    if(x<safeX+TILE-2&&x+pw>safeX+2) return ob;
+  }
   return null;
 }
 function carHit(px){
@@ -278,14 +281,9 @@ function update(ts){
     const ln=lanes[player.row];
     if(ln&&ln.type==='water'){
       const log=logUnder(); if(!log){ kill(); return; }
-      player.logMoved+=log.spd*dt;
-      if(Math.abs(player.logMoved)>=TILE){
-        const step=player.logMoved>0?1:-1;
-        const nc=player.col+step;
-        if(nc<0||nc>=COLS){ kill(); return; }
-        player.col=nc; player.x=player.col*TILE;
-        player.logMoved-=step*TILE;
-      }
+      player.x+=log.spd*dt;
+      player.col=Math.max(0,Math.min(COLS-1,Math.round(player.x/TILE)));
+      if(player.x<-TILE*.4||player.x>W-TILE*.6){ kill(); return; }
     }
     if(ln&&ln.type==='road'&&carHit()){ kill(); return; }
     if(ln&&ln.type==='sky' &&skyHit()){ kill(); return; }
