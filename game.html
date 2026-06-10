@@ -142,7 +142,7 @@ function makeLane(row){
 
   if(type==='sky'){
     const spd=(350+Math.random()*100)*diff*dir;
-    const rqW=TILE*6;
+    const rqW=TILE*4;
     obs.push({x:dir>0?-(rqW+TILE*2):W+TILE*2, w:rqW, spd, shook:false});
     return {row,type,obs};
   }
@@ -151,9 +151,10 @@ function makeLane(row){
   if(type==='road'){
     const spd=(85+Math.random()*70)*diff*dir;
     for(let i=0;i<count;i++){
-      const big=Math.random()<.25;
-      const pokemon=big?'snorlax':(Math.random()<.5?'rapidash':'doduo');
-      obs.push({x:i*gap+Math.random()*gap*.4, w:big?TILE*2:TILE, spd, pokemon});
+      const r=Math.random();
+      const pokemon=r<.25?'snorlax':(r<.625?'rapidash':'doduo');
+      const w=pokemon==='snorlax'?TILE*2:pokemon==='rapidash'?TILE*1.5:TILE;
+      obs.push({x:i*gap+Math.random()*gap*.4, w, spd, pokemon});
     }
     // sort by x then push apart so no two obstacles start overlapping
     obs.sort((a,b)=>a.x-b.x);
@@ -164,8 +165,7 @@ function makeLane(row){
   } else {
     const spd=(50+Math.random()*45)*diff*dir;
     for(let i=0;i<count;i++){
-      const len=TILE*(2+Math.floor(Math.random()*2));
-      obs.push({x:i*gap+Math.random()*gap*.3, w:len, spd, pokemon:'lapras'});
+      obs.push({x:i*gap+Math.random()*gap*.3, w:TILE*2, spd, pokemon:'lapras'});
     }
     obs.sort((a,b)=>a.x-b.x);
     for(let i=1;i<obs.length;i++){
@@ -189,7 +189,7 @@ function initGame(){
   lanes={}; maxGen=0; score=0; camRow=-BELOW; gameTime=0;
   ensureLanes(VIS+6);
   const sc=Math.floor(COLS/2);
-  player={col:sc,row:0,x:sc*TILE,fromRow:0,fromX:sc*TILE,moving:false,hopT:0,dead:false};
+  player={col:sc,row:0,x:sc*TILE,fromRow:0,fromX:sc*TILE,moving:false,hopT:0,dead:false,logMoved:0};
 }
 
 // ── MOVEMENT ──────────────────────────────────────────────────
@@ -200,8 +200,8 @@ function tryHop(dc,dr){
   ensureLanes(nr+2);
   const dl=lanes[nr];
   if(dl&&dl.trees&&dl.trees.includes(nc)) return;
-  player.fromRow=player.row; player.fromX=player.x;
-  player.col=nc; player.row=nr; player.moving=true; player.hopT=0;
+  player.fromRow=player.row; player.fromX=player.col*TILE;
+  player.col=nc; player.row=nr; player.moving=true; player.hopT=0; player.logMoved=0;
   if(nr>score){ score=nr; if(score>best){best=score;localStorage.setItem('pkx5',best);} }
 }
 
@@ -278,9 +278,14 @@ function update(ts){
     const ln=lanes[player.row];
     if(ln&&ln.type==='water'){
       const log=logUnder(); if(!log){ kill(); return; }
-      player.x+=log.spd*dt;
-      player.col=Math.max(0,Math.min(COLS-1,Math.round(player.x/TILE)));
-      if(player.x<-TILE*.4||player.x>W-TILE*.6){ kill(); return; }
+      player.logMoved+=log.spd*dt;
+      if(Math.abs(player.logMoved)>=TILE){
+        const step=player.logMoved>0?1:-1;
+        const nc=player.col+step;
+        if(nc<0||nc>=COLS){ kill(); return; }
+        player.col=nc; player.x=player.col*TILE;
+        player.logMoved-=step*TILE;
+      }
     }
     if(ln&&ln.type==='road'&&carHit()){ kill(); return; }
     if(ln&&ln.type==='sky' &&skyHit()){ kill(); return; }
@@ -394,12 +399,10 @@ function drawShadow(cx,sy,rx,ry){
 
 function drawRoadOb(ob,sy){
   const flip=ob.spd<0;
-  const big=ob.w>TILE;
-  // shadow on road surface
   const cx=ob.x+ob.w/2;
-  drawShadow(cx,sy, big?TILE*.7:TILE*.38, big?8:5);
-  // animated Pokémon: snorlax gets 1.5× tile, others fill the tile
-  const ih=big?TILE*1.5:TILE, iw=big?TILE*1.5:TILE;
+  const isSnorlax=ob.pokemon==='snorlax';
+  drawShadow(cx,sy, isSnorlax?TILE*.7:TILE*.38, isSnorlax?8:5);
+  const iw=ob.w*0.9, ih=iw;
   const ix=ob.x+(ob.w-iw)/2;
   const iy=sy+(TILE-ih)/2;
   drawImg(animImgs[ob.pokemon], ix, iy, iw, ih, flip);
