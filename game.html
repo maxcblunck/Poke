@@ -41,6 +41,7 @@ canvas { display: block; }
   <div>Route <strong id="hR">1</strong></div>
   <div>Steps <strong id="hS">0</strong></div>
   <div>Best  <strong id="hB">0</strong></div>
+  <div id="hBiome" style="color:#fbbf24;font-weight:600;"></div>
 </div>
 
 <div id="wrap">
@@ -75,8 +76,54 @@ const ANIMATED = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprit
 
 const POKEDEX = {
   pikachu:25, charmander:4, bulbasaur:1, squirtle:7,
-  rapidash:78, doduo:84, snorlax:143, lapras:131, rayquaza:384
+  // grass biome
+  rapidash:78, doduo:84, snorlax:143, lapras:131, rayquaza:384,
+  // water biome
+  gyarados:130, vaporeon:134, dewgong:87, lugia:249,
+  // fire biome
+  arcanine:59, magmar:126, moltres:146, slugma:218,
+  // electric biome
+  electrode:101, jolteon:135, raichu:26, zapdos:145, lanturn:171,
 };
+
+// width in tiles for each pokemon
+const MON_SIZE = {
+  snorlax:2.0, rapidash:1.5, doduo:1.0,
+  gyarados:2.5, vaporeon:1.5, dewgong:1.5,
+  arcanine:1.5, magmar:1.0,
+  electrode:0.8, jolteon:1.0, raichu:1.0,
+  lapras:2.0, slugma:1.2, lanturn:1.5,
+  rayquaza:4.0, lugia:4.5, moltres:3.5, zapdos:3.5,
+};
+
+const BIOMES = [
+  {
+    name:'Kanto Forest',
+    roadMon:['snorlax','rapidash','doduo'], waterMon:'lapras', skyBoss:'rayquaza',
+    pal:{ grass:['#166534','#15803d'], road:['#1f2937','#374151'], water:['#1e40af','#1d4ed8'], sky:['#1e1b4b','#312e81'] },
+    groundStyle:'forest', roadStyle:'asphalt', waterStyle:'river', skyStyle:'space',
+  },
+  {
+    name:'Ocean Route',
+    roadMon:['gyarados','vaporeon','dewgong'], waterMon:'lapras', skyBoss:'lugia',
+    pal:{ grass:['#0c4d6b','#0a5a7a'], road:['#1e3a8a','#1e40af'], water:['#0c2461','#0a3580'], sky:['#091628','#0d2040'] },
+    groundStyle:'beach', roadStyle:'seafloor', waterStyle:'deep_ocean', skyStyle:'aurora',
+  },
+  {
+    name:'Volcano Pass',
+    roadMon:['arcanine','magmar','rapidash'], waterMon:'slugma', skyBoss:'moltres',
+    pal:{ grass:['#7c2d12','#9a3412'], road:['#451a03','#6b2100'], water:['#7f1d1d','#991b1b'], sky:['#1c0a00','#3d1a00'] },
+    groundStyle:'volcanic', roadStyle:'lava', waterStyle:'magma', skyStyle:'embers',
+  },
+  {
+    name:'Thunder Circuit',
+    roadMon:['electrode','jolteon','raichu'], waterMon:'lanturn', skyBoss:'zapdos',
+    pal:{ grass:['#1a1a2e','#16213e'], road:['#0d0d1a','#12122a'], water:['#1a0533','#200540'], sky:['#0a0a1a','#111128'] },
+    groundStyle:'city', roadStyle:'highway', waterStyle:'electric_stream', skyStyle:'storm',
+  },
+];
+
+function getBiomeAt(row){ return BIOMES[Math.floor(row/25)%4]; }
 
 // hidden container keeps GIFs in the DOM so browsers advance their frames
 const sprCache=document.createElement('div');
@@ -140,23 +187,24 @@ function makeLane(row){
 
   const diff=diffAt(row), dir=Math.random()<.5?1:-1, obs=[];
 
+  const biome=getBiomeAt(row);
   if(type==='sky'){
+    const boss=biome.skyBoss;
+    const bossW=(MON_SIZE[boss]||4)*TILE;
     const spd=(350+Math.random()*100)*diff*dir;
-    const rqW=TILE*4;
-    obs.push({x:dir>0?-(rqW+TILE*2):W+TILE*2, w:rqW, spd, shook:false});
+    obs.push({x:dir>0?-(bossW+TILE*2):W+TILE*2, w:bossW, spd, shook:false, pokemon:boss});
     return {row,type,obs};
   }
 
   const count=2+Math.floor(Math.random()*2), gap=W/count;
   if(type==='road'){
     const spd=(85+Math.random()*70)*diff*dir;
+    const pool=biome.roadMon;
     for(let i=0;i<count;i++){
-      const r=Math.random();
-      const pokemon=r<.25?'snorlax':(r<.625?'rapidash':'doduo');
-      const w=pokemon==='snorlax'?TILE*2:pokemon==='rapidash'?TILE*1.5:TILE;
+      const pokemon=pool[Math.floor(Math.random()*pool.length)];
+      const w=(MON_SIZE[pokemon]||1)*TILE;
       obs.push({x:i*gap+Math.random()*gap*.4, w, spd, pokemon});
     }
-    // sort by x then push apart so no two obstacles start overlapping
     obs.sort((a,b)=>a.x-b.x);
     for(let i=1;i<obs.length;i++){
       const minX=obs[i-1].x+obs[i-1].w+12;
@@ -164,8 +212,10 @@ function makeLane(row){
     }
   } else {
     const spd=(50+Math.random()*45)*diff*dir;
+    const logMon=biome.waterMon;
+    const logW=(MON_SIZE[logMon]||2)*TILE;
     for(let i=0;i<count;i++){
-      obs.push({x:i*gap+Math.random()*gap*.3, w:TILE*2, spd, pokemon:'lapras'});
+      obs.push({x:i*gap+Math.random()*gap*.3, w:logW, spd, pokemon:logMon});
     }
     obs.sort((a,b)=>a.x-b.x);
     for(let i=1;i<obs.length;i++){
@@ -296,21 +346,56 @@ function update(ts){
   document.getElementById('hS').textContent=score;
   document.getElementById('hR').textContent=Math.floor(score/15)+1;
   document.getElementById('hB').textContent=best;
+  document.getElementById('hBiome').textContent=getBiomeAt(player.row).name;
 }
 
 // ── DRAW HELPERS ──────────────────────────────────────────────
-function drawTree(col,sy){
+function drawGroundOb(col,sy,biome){
   const cx=col*TILE+TILE/2, cy=sy+TILE/2-2, r=TILE*.37;
-  ctx.fillStyle='rgba(0,0,0,0.22)'; ctx.beginPath();
-  ctx.ellipse(cx+2,sy+TILE-6,r*.78,r*.28,0,0,PI*2); ctx.fill();
-  ctx.fillStyle='#7c3a1e'; ctx.fillRect(cx-5,cy+r-6,11,18);
-  ctx.fillStyle='#14532d'; ctx.beginPath(); ctx.arc(cx+2,cy+2,r,0,PI*2); ctx.fill();
-  ctx.fillStyle='#16a34a'; ctx.beginPath(); ctx.arc(cx-1,cy-2,r*.87,0,PI*2); ctx.fill();
-  ctx.fillStyle='rgba(255,255,255,0.13)'; ctx.beginPath();
-  ctx.ellipse(cx-5,cy-7,r*.42,r*.42,0,0,PI*2); ctx.fill();
+  const style=biome?biome.groundStyle:'forest';
+  if(style==='forest'){
+    ctx.fillStyle='rgba(0,0,0,0.22)'; ctx.beginPath();
+    ctx.ellipse(cx+2,sy+TILE-6,r*.78,r*.28,0,0,PI*2); ctx.fill();
+    ctx.fillStyle='#7c3a1e'; ctx.fillRect(cx-5,cy+r-6,11,18);
+    ctx.fillStyle='#14532d'; ctx.beginPath(); ctx.arc(cx+2,cy+2,r,0,PI*2); ctx.fill();
+    ctx.fillStyle='#16a34a'; ctx.beginPath(); ctx.arc(cx-1,cy-2,r*.87,0,PI*2); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.13)'; ctx.beginPath();
+    ctx.ellipse(cx-5,cy-7,r*.42,r*.42,0,0,PI*2); ctx.fill();
+  } else if(style==='beach'){
+    // palm tree
+    ctx.fillStyle='rgba(0,0,0,0.15)'; ctx.beginPath();
+    ctx.ellipse(cx+2,sy+TILE-6,r*.78,r*.28,0,0,PI*2); ctx.fill();
+    ctx.strokeStyle='#a16207'; ctx.lineWidth=4;
+    ctx.beginPath(); ctx.moveTo(cx,sy+TILE-8); ctx.quadraticCurveTo(cx+6,cy+r,cx+4,cy); ctx.stroke();
+    ctx.strokeStyle='#84cc16'; ctx.lineWidth=3;
+    for(let a=-0.8;a<=0.8;a+=0.4){
+      ctx.beginPath(); ctx.moveTo(cx+4,cy);
+      ctx.quadraticCurveTo(cx+4+Math.sin(a)*28,cy-10,cx+4+Math.sin(a)*22,cy-22); ctx.stroke();
+    }
+  } else if(style==='volcanic'){
+    // rock spike
+    ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.beginPath();
+    ctx.ellipse(cx+2,sy+TILE-6,r*.78,r*.28,0,0,PI*2); ctx.fill();
+    ctx.fillStyle='#44403c';
+    ctx.beginPath(); ctx.moveTo(cx-12,sy+TILE-6); ctx.lineTo(cx+2,cy-10); ctx.lineTo(cx+14,sy+TILE-6);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#78716c';
+    ctx.beginPath(); ctx.moveTo(cx+2,cy-10); ctx.lineTo(cx+14,sy+TILE-6); ctx.lineTo(cx+8,sy+TILE-6);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle='rgba(251,146,60,0.5)'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(cx,cy+5); ctx.lineTo(cx-3,cy+18); ctx.stroke();
+  } else if(style==='city'){
+    // building
+    const bw=24, bh=32+(col%3)*10;
+    const bx=cx-bw/2, by=sy+TILE-bh-4;
+    ctx.fillStyle='#1e293b'; ctx.fillRect(bx,by,bw,bh);
+    ctx.fillStyle='rgba(251,191,36,0.75)';
+    for(let wy=by+4;wy<sy+TILE-8;wy+=8)
+      for(let wx=bx+3;wx<bx+bw-6;wx+=7)
+        if((col+Math.floor((wy-by)/8))%3!==0) ctx.fillRect(wx,wy,4,5);
+    ctx.fillStyle='#334155'; ctx.fillRect(bx-2,by-3,bw+4,5);
+  }
 }
-
-const PAL={ grass:['#166534','#15803d'], road:['#1f2937','#374151'], water:['#1e40af','#1d4ed8'], sky:['#1e1b4b','#312e81'] };
 
 // ── MAIN DRAW ─────────────────────────────────────────────────
 function draw(){
@@ -333,33 +418,133 @@ function drawWorld(){
     const sy=Math.round(rowY(r));
     if(sy>H+TILE||sy<-TILE*2) continue;
 
-    // lane bg
-    ctx.fillStyle=PAL[ln.type][r&1]; ctx.fillRect(0,sy,W,TILE);
+    // lane bg (biome palette)
+    const bm=getBiomeAt(r);
+    ctx.fillStyle=bm.pal[ln.type][r&1]; ctx.fillRect(0,sy,W,TILE);
 
-    // lane details
+    // lane details (biome-specific)
     if(ln.type==='road'){
-      ctx.save(); ctx.setLineDash([16,12]);
-      ctx.strokeStyle='rgba(251,191,36,0.4)'; ctx.lineWidth=2;
-      ctx.beginPath(); ctx.moveTo(0,sy+TILE/2); ctx.lineTo(W,sy+TILE/2); ctx.stroke(); ctx.restore();
+      if(bm.roadStyle==='asphalt'){
+        ctx.save(); ctx.setLineDash([16,12]);
+        ctx.strokeStyle='rgba(251,191,36,0.4)'; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.moveTo(0,sy+TILE/2); ctx.lineTo(W,sy+TILE/2); ctx.stroke(); ctx.restore();
+      } else if(bm.roadStyle==='seafloor'){
+        // bubble clusters
+        ctx.fillStyle='rgba(147,210,255,0.18)';
+        for(let b=0;b<6;b++){
+          const bx=(r*53+b*97+gameTime*15)%W;
+          const by2=sy+8+(b*11)%40;
+          const br=2+b%3;
+          ctx.beginPath(); ctx.arc(bx,by2,br,0,PI*2); ctx.fill();
+        }
+        // seaweed sway
+        ctx.strokeStyle='rgba(52,211,153,0.5)'; ctx.lineWidth=2;
+        for(let sw=0;sw<3;sw++){
+          const swx=(r*41+sw*143)%W;
+          const sway=Math.sin(gameTime*2+sw)*6;
+          ctx.beginPath(); ctx.moveTo(swx,sy+TILE);
+          ctx.quadraticCurveTo(swx+sway,sy+TILE/2,swx+sway*0.5,sy+8); ctx.stroke();
+        }
+      } else if(bm.roadStyle==='lava'){
+        // glowing lava cracks
+        ctx.strokeStyle='rgba(251,146,60,0.55)'; ctx.lineWidth=2;
+        for(let c2=0;c2<4;c2++){
+          const lx=(r*67+c2*111)%W;
+          ctx.beginPath(); ctx.moveTo(lx,sy+TILE); ctx.lineTo(lx+12,sy+TILE/2); ctx.lineTo(lx+4,sy+4); ctx.stroke();
+        }
+        // lava glow pulse
+        const pulse=Math.abs(Math.sin(gameTime*1.8+r))*0.12;
+        ctx.fillStyle=`rgba(239,68,68,${pulse})`; ctx.fillRect(0,sy,W,TILE);
+      } else if(bm.roadStyle==='highway'){
+        // white lane markers
+        ctx.save(); ctx.setLineDash([20,10]);
+        ctx.strokeStyle='rgba(255,255,255,0.25)'; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.moveTo(0,sy+TILE/2); ctx.lineTo(W,sy+TILE/2); ctx.stroke(); ctx.restore();
+        // neon edge lines
+        ctx.strokeStyle='rgba(167,139,250,0.35)'; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(0,sy+4); ctx.lineTo(W,sy+4); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,sy+TILE-4); ctx.lineTo(W,sy+TILE-4); ctx.stroke();
+      }
     } else if(ln.type==='water'){
-      const wx=(gameTime*55)%(W*2);
-      ctx.fillStyle='rgba(147,197,253,0.12)';
-      for(let ox=wx-W*2;ox<W+W;ox+=W){ ctx.fillRect(ox,sy+7,W,7); ctx.fillRect(ox,sy+38,W,5); }
+      if(bm.waterStyle==='river'){
+        const wx=(gameTime*55)%(W*2);
+        ctx.fillStyle='rgba(147,197,253,0.12)';
+        for(let ox=wx-W*2;ox<W+W;ox+=W){ ctx.fillRect(ox,sy+7,W,7); ctx.fillRect(ox,sy+38,W,5); }
+      } else if(bm.waterStyle==='deep_ocean'){
+        const wx=(gameTime*30)%(W*2);
+        ctx.fillStyle='rgba(96,165,250,0.08)';
+        for(let ox=wx-W*2;ox<W+W;ox+=W){ ctx.fillRect(ox,sy+10,W,9); ctx.fillRect(ox,sy+36,W,6); }
+        // bioluminescent dots
+        ctx.fillStyle='rgba(52,211,153,0.4)';
+        for(let d=0;d<5;d++){
+          const dx=(r*73+d*137+gameTime*8)%W;
+          const dy=sy+10+(d*9)%44;
+          const glow=Math.abs(Math.sin(gameTime*3+d))*2.5;
+          ctx.beginPath(); ctx.arc(dx,dy,glow,0,PI*2); ctx.fill();
+        }
+      } else if(bm.waterStyle==='magma'){
+        // lava flow bubbles
+        const pulse=Math.abs(Math.sin(gameTime*2.5+r));
+        ctx.fillStyle=`rgba(251,146,60,${0.1+pulse*0.15})`; ctx.fillRect(0,sy,W,TILE);
+        ctx.fillStyle='rgba(239,68,68,0.3)';
+        for(let b=0;b<4;b++){
+          const bx=(r*61+b*89+gameTime*12)%W;
+          const br=3+b%4;
+          ctx.beginPath(); ctx.arc(bx,sy+TILE*.6,br,0,PI*2); ctx.fill();
+        }
+      } else if(bm.waterStyle==='electric_stream'){
+        // electric pulses
+        const ex=(gameTime*80)%(W*2);
+        ctx.strokeStyle='rgba(167,139,250,0.3)'; ctx.lineWidth=3;
+        for(let ox=ex-W*2;ox<W+W;ox+=W*0.5){
+          ctx.beginPath(); ctx.moveTo(ox,sy+TILE/2);
+          ctx.lineTo(ox+12,sy+TILE/2-8); ctx.lineTo(ox+24,sy+TILE/2+8);
+          ctx.lineTo(ox+36,sy+TILE/2); ctx.stroke();
+        }
+        const zpulse=Math.abs(Math.sin(gameTime*4+r))*0.1;
+        ctx.fillStyle=`rgba(250,204,21,${zpulse})`; ctx.fillRect(0,sy,W,TILE);
+      }
     } else if(ln.type==='sky'){
-      ctx.fillStyle='rgba(255,255,255,0.5)';
-      for(let s=0;s<8;s++){
-        const sx=(r*37+s*71)%W, sy2=sy+((r*13+s*29)%TILE);
-        const blink=Math.abs(Math.sin(frameCount*.04+s))*1.5;
-        ctx.beginPath(); ctx.arc(sx,sy2,blink,0,PI*2); ctx.fill();
+      if(bm.skyStyle==='space'){
+        ctx.fillStyle='rgba(255,255,255,0.5)';
+        for(let s=0;s<8;s++){
+          const sx=(r*37+s*71)%W, sy2=sy+((r*13+s*29)%TILE);
+          const blink=Math.abs(Math.sin(frameCount*.04+s))*1.5;
+          ctx.beginPath(); ctx.arc(sx,sy2,blink,0,PI*2); ctx.fill();
+        }
+      } else if(bm.skyStyle==='aurora'){
+        for(let a=0;a<3;a++){
+          const wave=Math.sin(gameTime*0.8+a+r*0.1)*12;
+          ctx.strokeStyle=`rgba(52,211,153,${0.25+a*0.1})`; ctx.lineWidth=6+a*3;
+          ctx.beginPath(); ctx.moveTo(0,sy+TILE/2+wave);
+          ctx.quadraticCurveTo(W/2,sy+TILE/2-wave*1.5,W,sy+TILE/2+wave*0.5); ctx.stroke();
+        }
+      } else if(bm.skyStyle==='embers'){
+        for(let e=0;e<10;e++){
+          const ex=(r*43+e*79+gameTime*25)%W;
+          const ey=sy+((r*17+e*53+gameTime*18)%TILE);
+          const er=1+e%2;
+          const alpha=Math.abs(Math.sin(gameTime*4+e))*0.8;
+          ctx.fillStyle=`rgba(251,146,60,${alpha})`;
+          ctx.beginPath(); ctx.arc(ex,ey,er,0,PI*2); ctx.fill();
+        }
+      } else if(bm.skyStyle==='storm'){
+        // dark stormclouds tint
+        ctx.fillStyle='rgba(15,10,30,0.3)'; ctx.fillRect(0,sy,W,TILE);
+        // lightning flash
+        const flash=Math.abs(Math.sin(gameTime*6+r*2));
+        if(flash>0.92){
+          ctx.fillStyle=`rgba(250,204,21,${(flash-0.92)*8})`; ctx.fillRect(0,sy,W,TILE);
+        }
       }
     } else {
-      if(ln.trees) ln.trees.forEach(col=>drawTree(col,sy));
+      if(ln.trees) ln.trees.forEach(col=>drawGroundOb(col,sy,bm));
     }
 
     // obstacles
     for(const ob of ln.obs){
       if(ob.x+ob.w<-TILE*2||ob.x>W+TILE*2) continue;
-      if     (ln.type==='sky')   drawRayquaza(ob,sy);
+      if     (ln.type==='sky')   drawSkyOb(ob,sy);
       else if(ln.type==='road')  drawRoadOb(ob,sy);
       else if(ln.type==='water') drawWaterOb(ob,sy);
     }
@@ -418,17 +603,20 @@ function drawWaterOb(ob,sy){
   drawImg(animImgs['lapras'], ix, sy+2, iw, ih, flip);
 }
 
-function drawRayquaza(ob,sy){
+// trail colours per sky boss
+const SKY_TRAIL={rayquaza:'rgba(109,40,217,0.18)',lugia:'rgba(96,165,250,0.18)',moltres:'rgba(251,146,60,0.22)',zapdos:'rgba(250,204,21,0.22)'};
+
+function drawSkyOb(ob,sy){
   const flip=ob.spd<0;
-  // energy trail streaks
-  ctx.fillStyle='rgba(109,40,217,0.18)';
+  const boss=ob.pokemon||'rayquaza';
+  // energy trail
+  ctx.fillStyle=SKY_TRAIL[boss]||'rgba(109,40,217,0.18)';
   const trailW=ob.w*0.6, trailH=TILE*0.4;
   ctx.fillRect(ob.x+(ob.w-trailW)/2, sy+(TILE-trailH)/2, trailW, trailH);
-  // animated Rayquaza: tall, centered
   const ih=TILE*1.6, iw=ob.w*0.75;
   const ix=ob.x+(ob.w-iw)/2;
   const iy=sy+(TILE-ih)/2;
-  drawImg(animImgs['rayquaza'], ix, iy, iw, ih, flip);
+  drawImg(animImgs[boss], ix, iy, iw, ih, flip);
 }
 
 function drawPlayer(){
