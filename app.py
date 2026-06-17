@@ -34,9 +34,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 pg = st.navigation([
-    st.Page("pages/1_Popularity.py", title="Popularity",  icon="🌟"),
-    st.Page("pages/2_Search.py",     title="Card Search", icon="🔍"),
-    st.Page("pages/4_Compare.py",    title="Compare",     icon="🆚"),
-    st.Page("pages/3_Game.py",       title="PokéCross",   icon="⚡"),
+    st.Page("pages/1_Popularity.py",  title="Popularity",  icon="🌟"),
+    st.Page("pages/2_Search.py",      title="Card Search", icon="🔍"),
+    st.Page("pages/4_Compare.py",     title="Compare",     icon="🆚"),
+    st.Page("pages/5_Collection.py",  title="Collection",  icon="📦"),
+    st.Page("pages/3_Game.py",        title="PokéCross",   icon="⚡"),
 ])
 pg.run()
