@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import streamlit as st
 import plotly.graph_objects as go
 from streamlit_extras.colored_header import colored_header
